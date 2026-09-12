@@ -47,6 +47,12 @@ window.NUTRIBOII_CONFIG = {
   tdee: { exerciseFactor: 0.7, incidentalFactor: 0.5 },
 
   rollingWindowDays: 7,     // the rolling-average deficit window
+
+  /* Days of InBody history the pace projection fits over. Scans are
+     irregular, so a fixed COUNT of scans can span a year and average an
+     old gaining period into what should read as the current pace. Falls
+     back to the last two scans if the window holds fewer than two. */
+  projectionWindowDays: 120,
   weekDays:          7,     // "Week" view span
   trendDays:        30      // "Trends" calorie chart span
 };

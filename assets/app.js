@@ -340,7 +340,16 @@ function projection(targets) {
   var s = M.scans.filter(function (x) { return x.weight != null && x.fatMass != null; });
   if (s.length < 2) return { state: s.length ? 'need-more' : 'none', scans: s.length, latest: s[s.length - 1] || null };
 
-  var recent = s.slice(-4);                        // "current" rate, but stable
+  // Fit the rate over a recent TIME window, not a fixed number of scans.
+  // Scans are irregular: with an 8-month gap in the record, 'the last four'
+  // can span 41 weeks and average a period of gaining into what is supposed
+  // to read as the current pace. Fall back to the last two if the window is
+  // too sparse, and report the basis so a thin estimate is visibly thin.
+  var win = CFG.projectionWindowDays || 120;
+  var last = s[s.length - 1];
+  var cutoff = addDays(last.date, -win);
+  var recent = s.filter(function (x) { return x.date >= cutoff; });
+  if (recent.length < 2) recent = s.slice(-2);
   var t0 = parseYMD(recent[0].date).getTime();
   var xs = recent.map(function (r) { return (parseYMD(r.date).getTime() - t0) / 604800000; }); // weeks
   var ys = recent.map(function (r) { return r.fatMass; });
@@ -357,14 +366,16 @@ function projection(targets) {
   var toLose = cur.fatMass - goalFat;
 
   if (cur.bf != null && cur.bf <= goalPct) return { state: 'reached', current: cur, goalPct: goalPct };
+  var spanDays = daysBetween(recent[0].date, cur.date);
   if (ratePerWeek <= 0.005) {
-    return { state: 'stalled', current: cur, goalPct: goalPct, toLose: toLose, ratePerWeek: ratePerWeek, used: recent.length };
+    return { state: 'stalled', current: cur, goalPct: goalPct, toLose: toLose,
+             ratePerWeek: ratePerWeek, used: recent.length, span: spanDays };
   }
   return {
     state: 'ok', current: cur, goalPct: goalPct, toLose: toLose,
     ratePerWeek: ratePerWeek, weeks: toLose / ratePerWeek,
-    goalWeight: goalWeight, used: recent.length,
-    span: daysBetween(recent[0].date, cur.date)
+    goalWeight: goalWeight, used: recent.length, span: spanDays,
+    thin: recent.length < 3 || spanDays < 21
   };
 }
 
@@ -493,10 +504,17 @@ function lineChart(w, opts) {
     s += '<circle class="' + cls + '" cx="' + X(p).toFixed(1) + '" cy="' + Y(p.y).toFixed(1) + '" r="' + r + '"/>';
   });
 
-  // x labels, thinned to fit
-  var every = Math.ceil(pts.length / Math.max(2, Math.floor(iw / 58)));
+  // x labels, thinned by PIXEL POSITION rather than by index. Index
+  // thinning assumes even spacing; InBody scans are irregular, so evenly
+  // numbered labels still overlapped wherever scans clustered.
+  var minGap = 56, lastX = -1e9, keep = [];
   pts.forEach(function (p, i) {
-    if (i % every !== 0 && i !== pts.length - 1) return;
+    var x = X(p), isLast = (i === pts.length - 1);
+    if (x - lastX >= minGap) { keep.push(p); lastX = x; return; }
+    // the final date is the one worth keeping, so evict the label it crowds
+    if (isLast) { keep.pop(); keep.push(p); lastX = x; }
+  });
+  keep.forEach(function (p) {
     s += '<text class="ax' + (p.y == null ? ' dim' : '') + '" x="' + X(p).toFixed(1) + '" y="' + (h - 8) + '" text-anchor="middle">' + esc(p.label) + '</text>';
   });
 
@@ -730,14 +748,19 @@ function projectionCell(p, t) {
       '<span class="sub">' + nf(p.current.bf, 1) + '% at the last scan.</span></div>';
   if (p.state === 'stalled')
     return '<div class="cell">' + lbl + '<span class="big bad">Not yet</span>' +
-      '<span class="sub">Fat mass is flat or rising across the last ' + p.used + ' scans. ' +
-      nf(p.toLose, 1) + ' kg of fat still to lose from ' + nf(p.current.bf, 1) + '%.</span></div>';
+      '<span class="sub">Fat mass is flat or rising across the last ' + p.used + ' scans (' +
+      Math.round(p.span / 7) + ' weeks). ' +
+      nf(p.toLose, 1) + ' kg of fat to lose from ' + nf(p.current.bf, 1) + '%.</span></div>';
 
   var wk = Math.round(p.weeks);
+  var basis = p.used + ' scan' + (p.used === 1 ? '' : 's') + ' over ' +
+    (p.span >= 14 ? Math.round(p.span / 7) + ' weeks' : p.span + ' days');
   return '<div class="cell hl">' + lbl +
     '<span class="big">~' + wk + '<span class="u">week' + (wk === 1 ? '' : 's') + '</span></span>' +
     '<span class="sub">At ' + nf(p.ratePerWeek, 2) + ' kg fat/week, from ' + nf(p.current.bf, 1) + '% today. ' +
-    'That is ' + nf(p.toLose, 1) + ' kg to go, landing near ' + nf(p.goalWeight, 1) + ' kg.</span></div>';
+    nf(p.toLose, 1) + ' kg to go, landing near ' + nf(p.goalWeight, 1) + ' kg.' +
+    ' <em style="font-style:normal;color:var(--ink-25)">Based on ' + basis +
+    (p.thin ? ' — thin, another scan will sharpen it' : '') + '.</em></span></div>';
 }
 
 function cell(label, value, unit, cls) {
@@ -1196,7 +1219,7 @@ function load() {
     lastLoad = Date.now();
     var t = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date());
     setSync('', 'Live · ' + t + ' SGT', true);
-    $('#railStamp').textContent = M.dates.length + ' days logged';
+    $('#railStamp').textContent = M.dates.length + ' day' + (M.dates.length === 1 ? '' : 's') + ' logged';
     loading = false;
   }).catch(function (e) {
     loading = false;
