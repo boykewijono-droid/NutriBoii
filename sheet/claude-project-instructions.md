@@ -39,9 +39,11 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
 1. **Date** — ISO `YYYY-MM-DD`, Singapore local date (UTC+8). A day ends at
    midnight SGT, not UTC.
 
-2. **DayType** — exactly one of `Rest`, `Busy`, `Gym`, `Treat`. The cell has a
-   dropdown that rejects anything else, and the dashboard ignores unknown
-   values rather than inventing a fifth category.
+2. **DayType** — one of `Rest`, `Busy`, `Gym`, `Treat`, or left out.
+   Anything else is rejected. It is OPTIONAL: omit it and the cell stays
+   blank, the dashboard simply shows no day-type chip, and nothing else is
+   affected. Ask him once if it is not obvious, but never hold up a log
+   waiting for it — write the row and add the type later.
    - `Rest` — low activity, working from home, no gym
    - `Busy` — office or otherwise moderately active
    - `Gym` — trained that day; put the split in `GymDay`
@@ -138,6 +140,13 @@ except inside the link itself.
 **Fields are named, never positional.** Any of:
 `date` `dayType` `calories` `protein` `fat` `carbs` `steps` `activeCal`
 `exerciseCal` `bmr` `gymDay` `notes`. URL-encode the values.
+
+**Only `date` matters.** Every other field is optional — send what you know
+and leave the rest out. Never block on a missing value; log what you have.
+
+**Check before you assume.** `action=get&date=...` returns the row as it
+stands. Use it if you are unsure whether a day already exists rather than
+guessing.
 
 **Send only what you know.** A field you leave out keeps whatever is already
 in the cell, so logging breakfast and then dinner works: call it again with
