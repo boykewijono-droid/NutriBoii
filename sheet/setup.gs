@@ -78,7 +78,7 @@ function setUpNutriBoii() {
   ss.setSpreadsheetTimeZone('Asia/Singapore');
 
   var msg = 'NutriBoii sheet ready.\n\n' +
-    'Next: Share -> General access -> \"Anyone with the link\" -> Viewer.\n\n' +
+    'Next: Share -> General access -> "Anyone with the link" -> Viewer.\n\n' +
     'Spreadsheet ID:\n' + ss.getId();
   // getUi() is unavailable in some run contexts; the log always works, so a
   // failed alert must not look like a failed setup.
