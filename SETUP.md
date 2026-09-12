@@ -100,6 +100,7 @@ sheet ID.
 | Numbers, green dot, "Live · HH:MM SGT" | Working |
 | "Connect your Sheet" | `sheetId` is empty — step 3 |
 | "not shared publicly yet" | Step 2 was missed |
+| "Cannot read the Sheet" but only when opened from disk | Expected — the page must be served over http(s), not `file://`. See the README. |
 | "a tab name did not match" | A tab got renamed — check spelling |
 | "No data logged" on Today | Working; today's row just isn't written yet |
 

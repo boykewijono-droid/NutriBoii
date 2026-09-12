@@ -147,6 +147,16 @@ The `gviz` endpoint was chosen over *File → Publish to web* for two reasons: i
 reflects an edit immediately, where a published CSV can cache for minutes, and
 it addresses tabs by name so one sheet ID covers all three.
 
+**It must be served over http(s).** Google grants CORS by reflecting the
+requesting origin, and a page opened straight off disk has the origin `null`,
+which cannot be reflected. So double-clicking `index.html` will always show
+"Cannot read the Sheet" even when everything is configured correctly. GitHub
+Pages is fine; to check a change locally, serve the folder instead:
+
+```bash
+python -m http.server 8000   # then open http://localhost:8000
+```
+
 If Google ever changes that endpoint, publish each tab to CSV and set the URLs
 directly — the code takes them without any other change:
 
