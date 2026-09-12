@@ -174,12 +174,26 @@ go stale in a way that misleads.
 Other actions: `action=scan` for an InBody row (`weight`, `bodyFat`,
 `fatMass`, `muscle`, `bmr`), and `action=get&date=...` to read a day back.
 
-### If you can call URLs, call it
-Hit the URL and report what came back. The response includes the row as it now
-stands plus a one-line summary with the computed deficit.
+### Calling it yourself — ALWAYS add `&format=json`
 
-### If you cannot call URLs, give him the link
-This is the normal case. Build the URL and hand it over as a tappable link:
+If you can fetch URLs, append `&format=json` to every call you make. Log,
+scan and get. No exceptions.
+
+Without it the endpoint returns the HTML confirmation page, and Apps Script
+does not serve that HTML to you directly: it serves a small JavaScript shell
+that loads the real content into a sandboxed iframe. A server-side fetch runs
+no JavaScript, so you receive the shell with none of the data in it. It will
+look like the row is missing or the sheet is empty. That is not a bug, and
+retrying will not change it — the flag is the fix.
+
+With `&format=json` you get the row plus a one-line summary as plain JSON,
+including the computed TDEE and deficit. Report what came back.
+
+### Links you hand to Boii — never add `format=json`
+
+He taps those in a real browser, where the iframe loads and he sees the
+confirmation page. Leave the flag off anything meant for a human. Build the
+URL and hand it over as a tappable link:
 
 > Today: 1,795 kcal, 171 g protein, 58 g fat. **[Tap to log](...)**
 
