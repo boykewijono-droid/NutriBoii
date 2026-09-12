@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GymBoii dashboard
+   NutriBoii dashboard
    Reads the Google Sheet live on every load. No build step, no backend.
 
    Two rules that drive most of this file:
@@ -11,9 +11,9 @@
 (function () {
 'use strict';
 
-var CFG = window.GYMBOII_CONFIG || {};
+var CFG = window.NUTRIBOII_CONFIG || {};
 var TZ  = CFG.timezone || 'Asia/Singapore';
-var LS_KEY = 'gymboii.sheetId';
+var LS_KEY = 'nutriboii.sheetId';
 
 /* ======================================================================
    0. Small utilities

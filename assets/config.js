@@ -1,8 +1,8 @@
 /* ==========================================================================
-   GymBoii — configuration
+   NutriBoii — configuration
    This is the ONLY file you normally need to edit.
    ========================================================================== */
-window.GYMBOII_CONFIG = {
+window.NUTRIBOII_CONFIG = {
 
   /* ------------------------------------------------------------------ */
   /* 1. The Google Sheet                                                 */

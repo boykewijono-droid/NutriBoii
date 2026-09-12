@@ -1,13 +1,13 @@
 /**
- * GymBoii — one-time Google Sheet builder.
+ * NutriBoii — one-time Google Sheet builder.
  *
  * HOW TO RUN
- *   1. Open the "GymBoii Daily Log" spreadsheet (already created; its ID is
+ *   1. Open the "NutriBoii" spreadsheet (already created; its ID is
  *      in assets/config.js).
  *   2. Extensions -> Apps Script. Delete the placeholder, paste this file.
- *   3. Run -> setUpGymBoii. Approve the permission prompt (it only touches
+ *   3. Run -> setUpNutriBoii. Approve the permission prompt (it only touches
  *      this spreadsheet). Google flags it unverified because you wrote it:
- *      Advanced -> Go to GymBoii Daily Log (unsafe).
+ *      Advanced -> Go to NutriBoii (unsafe).
  *   4. Back in the Sheet: Share -> General access -> Anyone with the link ->
  *      Viewer. The dashboard reads it anonymously, so this step is required.
  *
@@ -59,7 +59,7 @@ var TGT_ROWS = [
   ['bmr_fallback',    1672, 'kcal', 'Only used if the Baselines tab is empty.']
 ];
 
-function setUpGymBoii() {
+function setUpNutriBoii() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   buildDaily(ss);
   buildBaselines(ss);
@@ -77,7 +77,7 @@ function setUpGymBoii() {
 
   ss.setSpreadsheetTimeZone('Asia/Singapore');
 
-  var msg = 'GymBoii sheet ready.\n\n' +
+  var msg = 'NutriBoii sheet ready.\n\n' +
     'Next: Share -> General access -> \"Anyone with the link\" -> Viewer.\n\n' +
     'Spreadsheet ID:\n' + ss.getId();
   // getUi() is unavailable in some run contexts; the log always works, so a

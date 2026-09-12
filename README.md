@@ -1,9 +1,10 @@
-# GymBoii
+# NutriBoii
 
 A nutrition and body-composition dashboard that reads a Google Sheet live.
 Static HTML on GitHub Pages, no backend, no build step, no scheduled job.
 
-**Setup: [SETUP.md](SETUP.md)** — 15 minutes, four steps.
+**Setup: [SETUP.md](SETUP.md)** — the Sheet and the repo already exist, so
+what is left is about five minutes.
 
 ---
 

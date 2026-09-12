@@ -16,9 +16,9 @@ Give it its three tabs:
 
 1. Open it. **Extensions → Apps Script**. Delete the placeholder code.
 2. Paste the whole of [`sheet/setup.gs`](sheet/setup.gs).
-3. **Run → `setUpGymBoii`**. Approve the permission prompt — it only touches
+3. **Run → `setUpNutriBoii`**. Approve the permission prompt — it only touches
    this one spreadsheet. Google will warn that the script is unverified because
-   you wrote it yourself: **Advanced → Go to GymBoii Daily Log (unsafe)**.
+   you wrote it yourself: **Advanced → Go to NutriBoii (unsafe)**.
 4. It builds the three tabs, deletes the blank `Sheet1`, and confirms the ID.
 
 You now have:

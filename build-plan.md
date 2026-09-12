@@ -1,6 +1,11 @@
 
 # GymBoii Nutrition Dashboard — Build Plan for Claude Code
 
+> **Note:** this is the original brief, kept as received. It was written under
+> the name *GymBoii*; the project shipped as **NutriBoii** to keep it separate
+> from the unrelated GymBoii project. Names in the text below are historical —
+> the code, the repo and the Google Sheet are all NutriBoii.
+
 ## Goal
 A GitHub Pages HTML dashboard showing daily and historical nutrition/activity
 data, fed by a Google Sheet. Data entry happens conversationally (Boii talks
