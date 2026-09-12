@@ -2,10 +2,12 @@
  * GymBoii — one-time Google Sheet builder.
  *
  * HOW TO RUN
- *   1. Create a blank Google Sheet, name it "GymBoii Daily Log".
+ *   1. Open the "GymBoii Daily Log" spreadsheet (already created; its ID is
+ *      in assets/config.js).
  *   2. Extensions -> Apps Script. Delete the placeholder, paste this file.
  *   3. Run -> setUpGymBoii. Approve the permission prompt (it only touches
- *      this spreadsheet).
+ *      this spreadsheet). Google flags it unverified because you wrote it:
+ *      Advanced -> Go to GymBoii Daily Log (unsafe).
  *   4. Back in the Sheet: Share -> General access -> Anyone with the link ->
  *      Viewer. The dashboard reads it anonymously, so this step is required.
  *
@@ -62,13 +64,25 @@ function setUpGymBoii() {
   buildDaily(ss);
   buildBaselines(ss);
   buildTargets(ss);
-  var first = ss.getSheets()[0];
-  if (first.getName() === 'Sheet1' && first.getLastRow() === 0) ss.deleteSheet(first);
+  // Drop the blank default tab. Found by name, not by index: insertSheet's
+  // position depends on which sheet was active, so the default is not
+  // reliably at index 0. Any empty tab that isn't one of ours goes.
+  var keep = {};
+  keep[DAILY] = 1; keep[BASE] = 1; keep[TGT] = 1;
+  ss.getSheets().forEach(function (sh) {
+    if (!keep[sh.getName()] && sh.getLastRow() === 0 && ss.getSheets().length > 1) {
+      ss.deleteSheet(sh);
+    }
+  });
+
   ss.setSpreadsheetTimeZone('Asia/Singapore');
-  SpreadsheetApp.getUi().alert(
-    'GymBoii sheet ready.\n\n' +
-    'Next: Share -> General access -> "Anyone with the link" -> Viewer,\n' +
-    'then paste this spreadsheet ID into the dashboard:\n\n' + ss.getId());
+
+  var msg = 'GymBoii sheet ready.\n\n' +
+    'Next: Share -> General access -> \"Anyone with the link\" -> Viewer.\n\n' +
+    'Spreadsheet ID:\n' + ss.getId();
+  // getUi() is unavailable in some run contexts; the log always works, so a
+  // failed alert must not look like a failed setup.
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { Logger.log(msg); }
 }
 
 /* --------------------------------------------------------------------- */
