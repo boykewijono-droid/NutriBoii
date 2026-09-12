@@ -41,7 +41,13 @@
  *   Read a day back:   <URL>?token=T&action=get&date=2026-09-12
  *
  *   GET returns a small confirmation page, so a link is tappable on a phone.
- *   Add &format=json, or use POST with a JSON body, to get JSON instead.
+ *
+ *   PROGRAMMATIC CALLERS MUST ADD &format=json. Apps Script does not serve
+ *   HtmlService output directly: it serves a JavaScript shell that loads the
+ *   real content into a sandboxed iframe. Anything fetching server-side runs
+ *   no JavaScript and therefore receives an empty shell, which looks exactly
+ *   like a missing row. &format=json (or POST, which always replies JSON)
+ *   returns the data as plain JSON and sidesteps the wrapper entirely.
  *
  * BLANK IS NOT ZERO
  *   Omit a field and the cell is left as it is. Send it empty (notes=) and the
