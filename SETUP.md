@@ -1,6 +1,8 @@
 # Setup — from zero to a live dashboard
 
-Four steps, about 15 minutes. Do them in order.
+Four steps. Two of them are already done — the spreadsheet and the repo exist,
+so what is left is roughly five minutes: run the Apps Script, share the Sheet,
+turn on Pages.
 
 ---
 
@@ -68,8 +70,6 @@ Nothing to edit unless you ever swap to a different spreadsheet.
 ---
 
 ## 4. Publish to GitHub Pages
-
-From this folder:
 
 The code is already pushed to
 **https://github.com/boykewijono-droid/NutriBoii**.
