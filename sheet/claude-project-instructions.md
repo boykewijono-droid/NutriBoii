@@ -124,12 +124,50 @@ body fat %. Two or more scans unlock the "weeks to 15%" projection, which is
 the dashboard's headline number, so this tab matters more than its size
 suggests. After adding a scan, use its `BMR` for subsequent daily rows.
 
-## If you cannot write to the sheet
+## Writing to the sheet — use the API, never a pasted row
 
-Do not stop and do not ask him to reconstruct the numbers. Output the row as a
-single **tab-separated** line he can paste directly into the sheet, and say
-which row number it belongs in. Same for a `Baselines` row. Getting the
-arithmetic right is most of the value; the paste takes five seconds.
+The sheet has a write endpoint. Use it for every write.
+
+```
+<API_URL>?token=<TOKEN>&action=log&date=YYYY-MM-DD&<field>=<value>&...
+```
+
+Boii will give you the URL and token. Keep them out of your visible replies
+except inside the link itself.
+
+**Fields are named, never positional.** Any of:
+`date` `dayType` `calories` `protein` `fat` `carbs` `steps` `activeCal`
+`exerciseCal` `bmr` `gymDay` `notes`. URL-encode the values.
+
+**Send only what you know.** A field you leave out keeps whatever is already
+in the cell, so logging breakfast and then dinner works: call it again with
+just the new totals. Sending `notes=` (empty) clears that cell. Sending `0`
+writes a real zero.
+
+Never send `tdeeTarget` or `deficit`. The dashboard computes those.
+
+Other actions: `action=scan` for an InBody row (`weight`, `bodyFat`,
+`fatMass`, `muscle`, `bmr`), and `action=get&date=...` to read a day back.
+
+### If you can call URLs, call it
+Hit the URL and report what came back. The response includes the row as it now
+stands plus a one-line summary with the computed deficit.
+
+### If you cannot call URLs, give him the link
+This is the normal case. Build the URL and hand it over as a tappable link:
+
+> Today: 1,795 kcal, 171 g protein, 58 g fat. **[Tap to log](...)**
+
+He taps it, the row is written, and he gets a confirmation page. One tap, works
+on his phone, nothing to paste.
+
+### Never hand him a tab-separated row
+It has already gone wrong once. A row with blank fields in the middle loses a
+tab somewhere between you, the chat renderer and the clipboard, and every
+column after the gap shifts: a BMR landed in ExerciseCal and a note landed in
+GymDay. If the API is unavailable, tell him which named fields to type into
+which named columns, or write out only the non-blank ones as
+`ColumnName: value` pairs. Do not emit positional rows.
 
 ## Units
 
