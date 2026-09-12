@@ -1,0 +1,6 @@
+Key,Value,Unit,Notes
+protein_floor_g,150,g,Below this the day is flagged red
+protein_goal_g,160,g,Top of the healthy protein band
+fat_ceiling_g,70,g,Above this the day is flagged red
+bodyfat_goal_pct,15,%,Drives the weeks-to-goal projection
+bmr_fallback,1672,kcal,Only used if Baselines is empty
