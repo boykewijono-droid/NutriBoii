@@ -23,8 +23,11 @@ function makeSheet(header) {
       nr = nr || 1; nc = nc || 1;
       const rg = {
         setValue: (v) => {
-          while (grid.length < r) grid.push(new Array(n).fill(''));
-          grid[r - 1][c - 1] = v;
+          // real Apps Script sets EVERY cell in the range
+          for (let i = 0; i < nr; i++) {
+            while (grid.length < r + i) grid.push(new Array(n).fill(''));
+            for (let j = 0; j < nc; j++) grid[r - 1 + i][c - 1 + j] = v;
+          }
         },
         getValue: () => (grid[r - 1] ? grid[r - 1][c - 1] : ''),
         setValues: (vals) => {
@@ -137,8 +140,10 @@ console.log('\n=== THE BUG THIS EXISTS TO KILL: named fields, blanks in the midd
      'GymDay=' + named.GymDay);
   ok('omitted Steps stays blank, not 0', named.Steps === '', 'Steps=' + JSON.stringify(named.Steps));
   ok('omitted ActiveCal stays blank, not 0', named.ActiveCal === '');
-  ok('TDEE_Target left for the dashboard', named.TDEE_Target === '');
-  ok('Deficit left for the dashboard', named.Deficit === '');
+  // Derived on write now, so the sheet reads on its own. No activity logged
+  // for this day, so TDEE is just the BMR.
+  ok('TDEE_Target derived and written', named.TDEE_Target === 1672, 'got ' + named.TDEE_Target);
+  ok('Deficit derived and written', named.Deficit === 1672 - 755, 'got ' + named.Deficit);
   ok('summary reports the computed deficit', /deficit \+/.test(r.summary), r.summary);
 }
 
@@ -149,14 +154,29 @@ console.log('\n=== partial updates through the day ===');
                         calories: '755', protein: '93', notes: 'breakfast only' });
   const r2 = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
     date: '2026-09-12', calories: '1795', protein: '171', fat: '58', carbs: '128',
-    dayType: 'Busy', steps: '9950', activeCal: '700', exerciseCal: '410', notes: 'full day' }));
+    dayType: 'Busy', steps: '9950', activeCal: '700', exerciseCal: '410',
+    bmr: '1672', notes: 'full day' }));
   const row = rowOf(sheets, 'Daily Log', '2026-09-12');
   const named = {}; DAILY_HDR.forEach((h, i) => named[h] = row[i]);
+  ok('no BMR anywhere -> derived columns stay blank, not zero',
+     (() => { const { sheets: s2, store: st2 } = setup();
+       call(s2, st2, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                       date: '2026-09-12', calories: '755' });
+       const r = rowOf(s2, 'Daily Log', '2026-09-12');
+       return r[10] === '' && r[11] === '';
+     })());
   ok('second call updated, did not duplicate',
      sheets['Daily Log']._grid.filter(r => String(r[0]).slice(0, 10) === '2026-09-12').length === 1);
   ok('reported as an update not a create', r2.updated === true && r2.created === false);
   ok('fields overwritten', named.Calories === 1795 && named.Protein_g === 171);
   ok('DayType accepted', named.DayType === 'Busy');
+  // the morning row had 755 kcal and no activity; the evening call adds both,
+  // so the derived columns must be recomputed, not left at morning numbers
+  const eTdee = Math.round(1672 + 410 * 0.7 + (700 - 410) * 0.5);
+  ok('TDEE_Target refreshed on update', named.TDEE_Target === eTdee,
+     'expected ' + eTdee + ' got ' + named.TDEE_Target);
+  ok('Deficit refreshed on update', named.Deficit === eTdee - 1795,
+     'expected ' + (eTdee - 1795) + ' got ' + named.Deficit);
 
   // a field left out of the second call must survive
   const r3 = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
@@ -191,6 +211,17 @@ console.log('\n=== validation ===');
   r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
                                    date: '2026-09-12', dayType: 'gym' }));
   ok('lowercase dayType canonicalised to Gym', r.ok && r.row.DayType === 'Gym', JSON.stringify(r.row && r.row.DayType));
+}
+
+console.log('\n=== derived columns are not settable by a caller ===');
+{
+  const { sheets, store } = setup();
+  call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-12',
+                        calories: '1000', bmr: '1600', deficit: '99999', tdeeTarget: '88888' });
+  const row = rowOf(sheets, 'Daily Log', '2026-09-12');
+  ok('a hand-passed Deficit is ignored, real value derived', row[11] === 1600 - 1000,
+     'got ' + row[11]);
+  ok('a hand-passed TDEE_Target is ignored', row[10] === 1600, 'got ' + row[10]);
 }
 
 console.log('\n=== field aliases all land on the right column ===');

@@ -30,7 +30,8 @@ window.NUTRIBOII_CONFIG = {
   targets: {
     protein_floor_g:   150,   // below this = RED warning state
     protein_goal_g:    160,   // top of the healthy band
-    fat_ceiling_g:      70,   // above this = RED warning state
+    fat_ceiling_g:      70,   // above this = AMBER, a heads-up
+    fat_red_g:          80,   // above this = RED, a real overshoot
     bodyfat_goal_pct:   15,   // the "why" — drives the projection
     bmr_fallback:     1600    // placeholder; only used if Baselines is empty
   },

@@ -65,7 +65,9 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
    not hardcode it: it changes with each InBody scan. Freezing it per row is
    deliberate, so that a new scan does not retroactively rewrite old days.
 
-6. **`GymDay`** — the split (`Day 1`, `Day 3`) or `None`.
+6. **`GymDay`** — `Yes` or `No` is enough. He tracks which split in a
+   separate project, so you will not know it and should not ask twice. If he
+   happens to mention `Day 2`, record that instead; otherwise `Yes`/`No`.
 
 7. **One row per date.** If a row already exists for today, *update it* rather
    than appending a second. He often logs breakfast in the morning and dinner
@@ -76,7 +78,9 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
 The `Targets` tab is authoritative. At the time of writing:
 
 - Protein floor **150 g**, target band 150–160 g. Under 150 shows red.
-- Fat ceiling **70 g**. Over shows red.
+- Fat **70 g** ceiling, **80 g** red line. 70–80 g shows amber as a heads-up;
+  above 80 g shows red. A single hard line made 72 g look as bad as 118 g,
+  so the band exists to keep the red meaningful.
 - Body fat goal **15%**.
 
 ## Notes — the field that does real work
@@ -95,6 +99,15 @@ it. Otherwise keep `Notes` short and factual.
 
 ## How to work with him
 
+- **Ask one question a day, not four.** You cannot know the day type from the
+  food alone. When he gives you the day's totals, ask a single question:
+  *"Gym today, and anything that made it a deliberate treat day?"* Then infer:
+  trained — `Gym`; a deliberate blow-out or clearly high intake he owns as
+  such — `Treat`; out of the house or high steps — `Busy`; otherwise `Rest`.
+  If he does not answer, leave `dayType` out and write the row anyway. It can
+  be added later and nothing else depends on it.
+- **Do not ask on a first meal.** Early in the day you cannot know the type
+  yet. Log what he ate and leave `dayType` and `gymDay` out entirely.
 - **Ask rather than guess.** Steps, active calories and exercise calories come
   off Samsung Health; he will read them to you. If he doesn't mention them,
   ask once, then leave them blank rather than inventing numbers.
@@ -153,7 +166,10 @@ in the cell, so logging breakfast and then dinner works: call it again with
 just the new totals. Sending `notes=` (empty) clears that cell. Sending `0`
 writes a real zero.
 
-Never send `tdeeTarget` or `deficit`. The dashboard computes those.
+**Never send `tdeeTarget` or `deficit`.** The API derives both on every write
+and refuses them as inputs. They are filled in the sheet so it reads on its
+own, and the dashboard recomputes from source regardless, so they can never
+go stale in a way that misleads.
 
 Other actions: `action=scan` for an InBody row (`weight`, `bodyFat`,
 `fatMass`, `muscle`, `bmr`), and `action=get&date=...` to read a day back.

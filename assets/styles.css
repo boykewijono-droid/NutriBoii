@@ -19,6 +19,7 @@
   --accent:#B4D336;
   --accent-dim:#7E962A;
   --flag:#C0442A;
+  --amber:#9B6A12;        /* fat between the ceiling and the red line */
 
   --rail:216px;
   --pad:clamp(18px,4vw,40px);
@@ -170,17 +171,23 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .macro-val{font-size:12.5px;color:var(--ink-45)}
 .macro-val b{font-family:var(--f-display);font-size:19px;font-weight:500;color:var(--ink);letter-spacing:-.01em}
 .macro.warn .macro-val b{color:var(--flag)}
+.macro.caution .macro-val b{color:var(--amber)}
 .track{height:7px;background:var(--paper-2);position:relative;overflow:hidden}
 .fill{position:absolute;inset:0 auto 0 0;background:var(--ink-25);transition:width .7s var(--ease)}
 .macro.warn .fill{background:var(--flag)}
+.macro.caution .fill{background:var(--amber)}
 .macro.ok .fill{background:var(--accent-dim)}
 .notch{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--ink-70)}
 .band{position:absolute;top:0;bottom:0;background:rgba(126,150,42,.2)}
+.band.amber{background:rgba(155,106,18,.16)}
+.notch.red{background:var(--flag)}
 .macro-note{
   margin-top:10px;font-size:11px;color:var(--flag);
   display:flex;gap:7px;align-items:flex-start;line-height:1.45;
 }
 .macro-note::before{content:"";flex:0 0 auto;width:3px;height:13px;background:var(--flag);margin-top:2px}
+.macro-note.caution{color:var(--amber)}
+.macro-note.caution::before{background:var(--amber)}
 .macro-foot{margin-top:9px;font-size:10.5px;color:var(--ink-45)}
 
 /* ==========================  charts  ===================================== */
@@ -223,6 +230,7 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .tip b{font-family:var(--f-display);font-size:14px;font-weight:500}
 .tip em{font-style:normal;color:var(--ink-25)}
 .tip .w{color:#E8836B}
+.tip .c{color:#D9AE55}
 
 /* ==========================  tables  ===================================== */
 .tw{overflow-x:auto;border:1px solid var(--line);background:var(--paper)}
@@ -242,6 +250,7 @@ tbody tr.today td{background:rgba(126,150,42,.08)}
 tbody tr.void td{color:var(--ink-25)}
 tbody tr.void td:first-child{color:var(--ink-45)}
 td.warn{color:var(--flag)}
+td.caution{color:var(--amber)}
 td b{font-weight:500}
 .dt{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--line);color:var(--ink-70)}
 .dt.Gym{border-color:var(--ink);color:var(--ink);font-weight:500}
@@ -281,9 +290,11 @@ td b{font-weight:500}
 .row span{color:var(--ink-45)}
 .row b{font-weight:500;text-align:right}
 .row b.warn{color:var(--flag)}
+.row b.caution{color:var(--amber)}
 .row b.dash{color:var(--ink-25);font-weight:400}
 .note{margin-top:20px;padding:15px 17px;background:var(--paper-2);border-left:2px solid var(--ink-25);font-size:12px;line-height:1.65;color:var(--ink-70)}
 .note.warn{border-left-color:var(--flag)}
+.note.caution{border-left-color:var(--amber)}
 .note .lbl{display:block;margin-bottom:6px}
 
 /* ==========================  states  ===================================== */

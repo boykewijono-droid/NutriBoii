@@ -268,24 +268,42 @@ function buildDays(rows, scans, targets) {
     };
     if (d.bmr == null) d.bmr = latestBMR;
 
-    // TDEE: trust the Sheet's value, else recompute with the agreed formula.
-    d.tdee = num(r.tdee_target);
-    if (d.tdee == null && d.bmr != null) {
+    // TDEE and Deficit are RECOMPUTED from source whenever the inputs exist,
+    // and the Sheet's own columns are only a fallback. The API writes those
+    // columns so the sheet reads sensibly on its own, but if a number is then
+    // edited by hand the stored total goes stale — recomputing means the
+    // dashboard is never wrong, whatever is sitting in those two cells.
+    if (d.bmr != null) {
       var ex = d.exercise == null ? 0 : d.exercise;
       var ac = d.active   == null ? 0 : d.active;
       d.tdee = Math.round(d.bmr + ex * exF + Math.max(0, ac - ex) * inF);
-      d.tdeeComputed = true;
+    } else {
+      d.tdee = num(r.tdee_target);
     }
-    d.deficit = num(r.deficit);
-    if (d.deficit == null && d.tdee != null && d.cal != null) d.deficit = Math.round(d.tdee - d.cal);
+    d.deficit = (d.tdee != null && d.cal != null)
+      ? Math.round(d.tdee - d.cal)
+      : num(r.deficit);
 
     // A day with no calories logged isn't a logged day for averaging purposes.
     d.hasIntake = d.cal != null;
-    d.fatOver    = d.fat != null && targets.fat_ceiling_g != null && d.fat > targets.fat_ceiling_g;
-    d.fatOverBy  = d.fatOver ? Math.round(d.fat - targets.fat_ceiling_g) : null;
+
+    // Fat has three states, not two. A hard line made 72g look as bad as
+    // 118g, which trains you to ignore the colour. Amber is a heads-up
+    // between the ceiling and the red threshold; red is a real overshoot.
+    var ceil = targets.fat_ceiling_g, red = targets.fat_red_g;
+    d.fatState = 'ok';
+    if (d.fat != null && ceil != null) {
+      if (red != null && d.fat > red) d.fatState = 'over';
+      else if (d.fat > ceil) d.fatState = 'caution';
+    }
+    d.fatOver    = d.fatState === 'over';
+    d.fatOverBy  = d.fatState === 'ok' || ceil == null ? null : Math.round(d.fat - ceil);
     d.proteinLow = d.protein != null && targets.protein_floor_g != null && d.protein < targets.protein_floor_g;
-    d.drivers    = d.fatOver ? fatDrivers(d.notes) : [];
-    d.flagged    = d.fatOver || d.proteinLow;
+    // Drivers are worth surfacing on amber too — that is the point at which
+    // naming the foods can still change the day.
+    d.drivers    = d.fatState === 'ok' ? [] : fatDrivers(d.notes);
+    d.flagged    = d.fatOver || d.proteinLow;     // amber is not a "flag"
+    d.marked     = d.flagged || d.fatState === 'caution';
     map[date] = d;
   });
   return map;
@@ -562,7 +580,8 @@ function dayTip(d) {
   if (d.tdee != null) s += ' <em>/ ' + nf(d.tdee) + '</em>';
   if (d.deficit != null) s += '<br>' + signed(d.deficit) + ' kcal ' + (d.deficit >= 0 ? 'deficit' : 'surplus');
   if (d.protein != null) s += '<br>P ' + nf(d.protein) + 'g' + (d.proteinLow ? ' <span class="w">low</span>' : '');
-  if (d.fat != null) s += ' &nbsp;F ' + nf(d.fat) + 'g' + (d.fatOver ? ' <span class="w">over</span>' : '');
+  if (d.fat != null) s += ' &nbsp;F ' + nf(d.fat) + 'g' +
+    (d.fatState === 'over' ? ' <span class="w">over</span>' : d.fatState === 'caution' ? ' <span class="c">high</span>' : '');
   return s;
 }
 
@@ -730,7 +749,7 @@ function macroBlock(d, t) {
   }
   var floor = t.protein_floor_g, goal = t.protein_goal_g, ceil = t.fat_ceiling_g;
   var h = '<div class="sec"><div class="sec-head"><h2>Macros</h2>' +
-    '<span class="lbl">Protein floor ' + nf(floor) + 'g · Fat ceiling ' + nf(ceil) + 'g</span></div><div class="macros">';
+    '<span class="lbl">Protein floor ' + nf(floor) + 'g · Fat amber ' + nf(ceil) + '+, red ' + nf(t.fat_red_g) + '+</span></div><div class="macros">';
 
   // Protein — under target is a warning state, same weight as fat over.
   var pMax = Math.max(goal * 1.25, d.protein || 0);
@@ -747,18 +766,25 @@ function macroBlock(d, t) {
     : '<div class="macro-foot">In the ' + nf(floor) + '–' + nf(goal) + 'g band.</div>';
   h += '</div>';
 
-  // Fat — over target is flagged, and the note is mined for the culprits.
-  var fMax = Math.max(ceil * 1.6, d.fat || 0);
-  h += '<div class="macro ' + (d.fatOver ? 'warn' : 'ok') + '">' +
+  // Fat — three states. The amber band between the ceiling and the red
+  // threshold is drawn on the track so the number has somewhere to sit.
+  var red = t.fat_red_g == null ? ceil : t.fat_red_g;
+  var fMax = Math.max(red * 1.4, d.fat || 0);
+  h += '<div class="macro ' + (d.fatState === 'over' ? 'warn' : d.fatState === 'caution' ? 'caution' : 'ok') + '">' +
     '<div class="macro-top"><span class="macro-name">Fat</span>' +
     '<span class="macro-val"><b>' + nf(d.fat) + '</b> g · ceiling ' + nf(ceil) + 'g</span></div>' +
     '<div class="track">' +
+      '<div class="band amber" style="left:' + (ceil / fMax * 100) + '%;width:' + ((red - ceil) / fMax * 100) + '%"></div>' +
       '<div class="fill" style="width:' + clamp((d.fat || 0) / fMax * 100, 0, 100) + '%"></div>' +
       '<div class="notch" style="left:' + (ceil / fMax * 100) + '%"></div>' +
+      '<div class="notch red" style="left:' + (red / fMax * 100) + '%"></div>' +
     '</div>';
-  if (d.fatOver) {
+  if (d.fatState === 'over') {
     h += '<div class="macro-note">Fat over by ' + nf(d.fatOverBy) + 'g' +
       (d.drivers.length ? ' — driven by: ' + esc(d.drivers.join(', ')) : ' — no contributing foods named in the note') + '.</div>';
+  } else if (d.fatState === 'caution') {
+    h += '<div class="macro-note caution">' + nf(d.fatOverBy) + 'g over the ceiling, under the ' + nf(red) + 'g line' +
+      (d.drivers.length ? ' — from: ' + esc(d.drivers.join(', ')) : '') + '.</div>';
   } else if (d.fat != null) {
     h += '<div class="macro-foot">' + nf(ceil - d.fat) + 'g under the ceiling.</div>';
   }
@@ -843,7 +869,7 @@ function dayTable(days) {
       '<td><b>' + nf(d.cal) + '</b></td>' +
       '<td' + (d.deficit != null && d.deficit < 0 ? ' class="warn"' : '') + '>' + signed(d.deficit) + '</td>' +
       '<td' + (d.proteinLow ? ' class="warn"' : '') + '>' + nf(d.protein) + '</td>' +
-      '<td' + (d.fatOver ? ' class="warn"' : '') + '>' + nf(d.fat) + '</td>' +
+      '<td' + (d.fatState === 'over' ? ' class="warn"' : d.fatState === 'caution' ? ' class="caution"' : '') + '>' + nf(d.fat) + '</td>' +
       '<td>' + nf(d.steps) + '</td></tr>';
   }).join('');
   return '<div class="tw"><table><thead><tr>' +
@@ -1043,7 +1069,7 @@ function openDay(date) {
       row('BMR', d.bmr, 'kcal') +
       '<h3>Macros</h3>' +
       row('Protein', d.protein, 'g', d.proteinLow) +
-      row('Fat', d.fat, 'g', d.fatOver) +
+      row('Fat', d.fat, 'g', d.fatState === 'over', d.fatState === 'caution') +
       row('Carbs', d.carbs, 'g') +
       '<h3>Activity</h3>' +
       row('Steps', d.steps, '') +
@@ -1051,9 +1077,13 @@ function openDay(date) {
       row('Exercise calories', d.exercise, 'kcal') +
       row('Gym', d.gym || '—', '') +
       '</div>';
-    if (d.fatOver) {
+    if (d.fatState === 'over') {
       h += '<div class="note warn"><span class="lbl">Fat over target</span>Over by ' + nf(d.fatOverBy) + 'g' +
         (d.drivers.length ? ' — driven by: ' + esc(d.drivers.join(', ')) : '') + '.</div>';
+    } else if (d.fatState === 'caution') {
+      h += '<div class="note caution"><span class="lbl">Fat above the ceiling</span>' + nf(d.fatOverBy) + 'g over, ' +
+        'still under the ' + nf(M.targets.fat_red_g) + 'g line' +
+        (d.drivers.length ? ' — from: ' + esc(d.drivers.join(', ')) : '') + '.</div>';
     }
     if (d.proteinLow) {
       h += '<div class="note warn"><span class="lbl">Protein under floor</span>' +
@@ -1066,9 +1096,10 @@ function openDay(date) {
   requestAnimationFrame(function () { s.classList.add('on'); $('#scrim').classList.add('on'); });
   var btn = s.querySelector('[data-act="closeDay"]'); if (btn) btn.focus();
 }
-function row(label, v, unit, warn) {
+function row(label, v, unit, warn, caution) {
   var txt = v == null ? '—' : (typeof v === 'number' ? nf(v, v % 1 ? 1 : 0) + (unit ? ' ' + unit : '') : esc(v));
-  return '<div class="row"><span>' + esc(label) + '</span><b class="' + (warn ? 'warn' : v == null ? 'dash' : '') + '">' + txt + '</b></div>';
+  var cls = warn ? 'warn' : caution ? 'caution' : v == null ? 'dash' : '';
+  return '<div class="row"><span>' + esc(label) + '</span><b class="' + cls + '">' + txt + '</b></div>';
 }
 function closeDay() {
   var s = $('#daySheet');

@@ -59,7 +59,8 @@ var BASE_COLS = [
 var TGT_ROWS = [
   ['protein_floor_g',  150, 'g',  'Below this, the day is flagged RED.'],
   ['protein_goal_g',   160, 'g',  'Top of the healthy protein band.'],
-  ['fat_ceiling_g',     70, 'g',  'Above this, the day is flagged RED.'],
+  ['fat_ceiling_g',     70, 'g',  'Above this, fat shows AMBER as a heads-up.'],
+  ['fat_red_g',         80, 'g',  'Above this, fat shows RED. A hard line made 72g look as bad as 118g.'],
   ['bodyfat_goal_pct',  15, '%',  'The goal. Drives the "weeks to goal" projection.'],
   ['bmr_fallback',    1672, 'kcal', 'Only used if the Baselines tab is empty.']
 ];

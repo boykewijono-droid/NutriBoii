@@ -142,8 +142,8 @@ var DAILY_MAP = {
   activecal:   [8,  true],  active: [8, true], activecalories: [8, true],
   exercisecal: [9,  true],  exercise: [9, true], exercisecalories: [9, true],
   bmr:         [10, true],
-  tdeetarget:  [11, true],  tdee: [11, true],
-  deficit:     [12, true],
+  /* TDEE_Target and Deficit are derived on every write, so they are
+     deliberately NOT settable through the API. */
   gymday:      [13, false], gym: [13, false], split: [13, false],
   notes:       [14, false], note: [14, false]
 };
@@ -180,6 +180,12 @@ function logDay(p) {
       var bmr = latestScanBmr();
       if (bmr != null) sh.getRange(res.row, 10).setValue(bmr);
     }
+
+    // Fill TDEE_Target and Deficit so the sheet reads sensibly on its own.
+    // Recomputed on EVERY log call, so a morning row that only had breakfast
+    // gets corrected when the evening totals arrive. The dashboard ignores
+    // these and recomputes from source, so a later hand-edit cannot mislead it.
+    writeDerived(sh, findRow(sh, date));
 
     sortByDate(sh);
     var row = readRow(sh, DAILY_MAP, 14, date);
@@ -260,6 +266,21 @@ function upsert(sh, map, nCols, date, p) {
     }
   }
   return { row: row, created: created, wrote: wrote };
+}
+
+/** Compute TDEE_Target and Deficit into columns 11 and 12 for this row.
+ *  Cleared rather than left stale when the inputs are not there. */
+function writeDerived(sh, row) {
+  if (!row) return;
+  var v = sh.getRange(row, 1, 1, 12).getValues()[0];
+  var cal = v[2], ac = v[7], ex = v[8], bmr = v[9];
+  var haveNum = function (x) { return x !== '' && x != null && !isNaN(x); };
+  if (!haveNum(bmr)) { sh.getRange(row, 11, 1, 2).setValue(''); return; }
+  var tdee = Math.round(Number(bmr) +
+    (haveNum(ex) ? Number(ex) : 0) * 0.7 +
+    Math.max(0, (haveNum(ac) ? Number(ac) : 0) - (haveNum(ex) ? Number(ex) : 0)) * 0.5);
+  sh.getRange(row, 11).setValue(tdee);
+  sh.getRange(row, 12).setValue(haveNum(cal) ? tdee - Number(cal) : '');
 }
 
 function findRow(sh, date) {
