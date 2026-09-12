@@ -65,7 +65,21 @@ var TGT_ROWS = [
 ];
 
 function setUpNutriBoii() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  // A second run starting while the first is still going can interleave with
+  // deleteColumns and shift the header row. One at a time.
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    Logger.log('Another setUpNutriBoii run is already in progress. Nothing done.');
+    return;
+  }
+  try {
+    buildAll(SpreadsheetApp.getActiveSpreadsheet());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function buildAll(ss) {
   buildDaily(ss);
   buildBaselines(ss);
   buildTargets(ss);
@@ -100,6 +114,14 @@ function sheetFor(ss, name) {
 
 function writeHeader(sh, cols) {
   var names = cols.map(function (c) { return c[0]; });
+
+  // Force the sheet to be exactly names.length columns wide BEFORE writing.
+  // Doing it in this order is what makes a re-run repair a drifted layout
+  // instead of preserving it.
+  var have = sh.getMaxColumns();
+  if (have < names.length) sh.insertColumnsAfter(have, names.length - have);
+  else if (have > names.length) sh.deleteColumns(names.length + 1, have - names.length);
+
   sh.getRange(1, 1, 1, names.length).setValues([names]);
   sh.getRange(1, 1, 1, names.length)
     .setFontFamily('Roboto Mono').setFontSize(10).setFontWeight('bold')
@@ -109,9 +131,6 @@ function writeHeader(sh, cols) {
   cols.forEach(function (c, i) { sh.getRange(1, i + 1).setNote(c[0] + '\n\n' + c[2]); });
   sh.setFrozenRows(1);
   sh.getRange(1, 1, 1, names.length).setWrap(false);
-  if (sh.getMaxColumns() > names.length) {
-    sh.deleteColumns(names.length + 1, sh.getMaxColumns() - names.length);
-  }
 }
 
 function formatColumns(sh, cols, fromRow, nRows) {
