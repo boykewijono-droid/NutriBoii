@@ -16,7 +16,11 @@
  *   3. Deploy -> New deployment -> type: Web app
  *        Description:   NutriBoii API
  *        Execute as:    Me
- *        Who has access: Anyone with Google account  (or Anyone)
+ *        Who has access: ANYONE  <- must be this, not "Anyone with
+ *                        Google account". The latter bounces every
+ *                        non-browser request to a Google login page, so
+ *                        nothing programmatic can reach it. The token is
+ *                        the access control here, not Google sign-in.
  *      Deploy, then copy the /exec URL.
  *   4. Test in a browser:  <URL>?token=<TOKEN>&action=ping
  *
@@ -86,7 +90,7 @@ function handle(e, verb) {
 
     var action = String(p.action || 'ping').toLowerCase();
     var out;
-    if (action === 'ping')      out = { ok: true, action: 'ping', message: 'NutriBoii API is up.' };
+    if (action === 'ping')      out = { ok: true, action: 'ping', summary: 'NutriBoii API is up. Token accepted.' };
     else if (action === 'log')  out = logDay(p);
     else if (action === 'scan') out = addScan(p);
     else if (action === 'get')  out = getDay(p);
@@ -396,7 +400,7 @@ function htmlReply(o) {
   'td:first-child{color:#7C7768;width:45%}td:last-child{text-align:right;font-weight:500}' +
   'a{display:inline-block;margin-top:20px;background:#16150F;color:#F4F1E8;padding:11px 20px;text-decoration:none;font-size:12px;letter-spacing:.04em}' +
   '</style><div class="card">' +
-  '<h1>' + (ok ? (o.created ? 'Logged' : o.action === 'get' ? 'NutriBoii' : 'Updated') : 'Not written') + '</h1>' +
+  '<h1>' + (ok ? headingFor(o) : 'Not written') + '</h1>' +
   '<div class="lbl">' + esc(o.date || o.action || '') + (ok ? '' : ' · error') + '</div>' +
   (ok ? (o.summary ? '<div class="sum">' + esc(o.summary) + '</div>' : '')
       : '<div class="err">' + esc(o.error) + '</div>') +
@@ -405,6 +409,13 @@ function htmlReply(o) {
   '</div>';
   return HtmlService.createHtmlOutput(h)
     .addMetaTag('viewport', 'width=device-width,initial-scale=1');
+}
+
+function headingFor(o) {
+  if (o.action === 'ping') return 'API is up';
+  if (o.action === 'get')  return o.found ? 'NutriBoii' : 'Nothing logged';
+  if (o.action === 'scan') return o.created ? 'Scan saved' : 'Scan updated';
+  return o.created ? 'Logged' : 'Updated';
 }
 
 function esc(s) {
