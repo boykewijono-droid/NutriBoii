@@ -6,12 +6,18 @@ Four steps, about 15 minutes. Do them in order.
 
 ## 1. Build the Google Sheet
 
-1. Create a blank Google Sheet. Name it **GymBoii Daily Log**.
-2. **Extensions → Apps Script**. Delete the placeholder code.
-3. Paste the whole of [`sheet/setup.gs`](sheet/setup.gs).
-4. **Run → `setUpGymBoii`**. Approve the permission prompt — it only touches
-   this one spreadsheet.
-5. It builds three tabs and shows you the spreadsheet ID. Copy that ID.
+The spreadsheet already exists — it was created for you, empty:
+
+**https://docs.google.com/spreadsheets/d/1_8vDpG2dIdTvPrWARYo8M8harF6vg0brcpeLfSkAsnE/edit**
+
+Give it its three tabs:
+
+1. Open it. **Extensions → Apps Script**. Delete the placeholder code.
+2. Paste the whole of [`sheet/setup.gs`](sheet/setup.gs).
+3. **Run → `setUpGymBoii`**. Approve the permission prompt — it only touches
+   this one spreadsheet. Google will warn that the script is unverified because
+   you wrote it yourself: **Advanced → Go to GymBoii Daily Log (unsafe)**.
+4. It builds the three tabs, deletes the blank `Sheet1`, and confirms the ID.
 
 You now have:
 
@@ -45,13 +51,14 @@ see *Keeping it private* at the bottom of the README.
 
 ## 3. Point the dashboard at the Sheet
 
-Open [`assets/config.js`](assets/config.js) and paste the ID:
+Already done — [`assets/config.js`](assets/config.js) is committed with this
+spreadsheet's ID:
 
 ```js
-sheetId: "1AbC...xYz",
+sheetId: "1_8vDpG2dIdTvPrWARYo8M8harF6vg0brcpeLfSkAsnE",
 ```
 
-That is the only edit needed.
+Nothing to edit unless you ever swap to a different spreadsheet.
 
 > **Or skip the edit.** Open the dashboard, and if `sheetId` is empty it shows a
 > setup screen that accepts the ID (or the full Sheet URL) and remembers it in
@@ -64,19 +71,16 @@ That is the only edit needed.
 
 From this folder:
 
-```bash
-git remote add origin https://github.com/<you>/gymboii-dashboard.git
-git branch -M main
-git push -u origin main
-```
+The code is already pushed to
+**https://github.com/boykewijono-droid/NutriBoii**.
 
-Then on GitHub: **Settings → Pages → Source: Deploy from a branch →
+Turn on Pages: **Settings → Pages → Source: Deploy from a branch →
 Branch: `main`, folder: `/ (root)` → Save.**
 
 Your URL appears within a minute or two:
 
 ```
-https://<you>.github.io/gymboii-dashboard/
+https://boykewijono-droid.github.io/NutriBoii/
 ```
 
 Open it on your phone → Share → **Add to Home Screen**. It gets its own icon

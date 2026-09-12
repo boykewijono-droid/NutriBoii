@@ -13,7 +13,7 @@ window.GYMBOII_CONFIG = {
 
      Leave as "" and the dashboard will show a first-run setup screen that
      accepts the ID in the browser and remembers it (localStorage).      */
-  sheetId: "",
+  sheetId: "1_8vDpG2dIdTvPrWARYo8M8harF6vg0brcpeLfSkAsnE",
 
   /* Tab names inside that spreadsheet. Must match exactly. */
   tabs: {
