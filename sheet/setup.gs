@@ -5,9 +5,10 @@
  *   1. Open the "NutriBoii" spreadsheet (already created; its ID is
  *      in assets/config.js).
  *   2. Extensions -> Apps Script. Delete the placeholder, paste this file.
- *   3. Run -> setUpNutriBoii. Approve the permission prompt (it only touches
- *      this spreadsheet). Google flags it unverified because you wrote it:
- *      Advanced -> Go to NutriBoii (unsafe).
+ *   3. Pick setUpNutriBoii in the function dropdown, then Run. Approve the
+ *      permission prompt (it only touches this spreadsheet). Google flags it
+ *      unverified because you wrote it: Advanced -> Go to NutriBoii (unsafe).
+ *      Takes a few seconds; output lands in the editor's Execution log.
  *   4. Back in the Sheet: Share -> General access -> Anyone with the link ->
  *      Viewer. The dashboard reads it anonymously, so this step is required.
  *
@@ -23,6 +24,10 @@ var BASE  = 'Baselines';
 var TGT   = 'Targets';
 
 var DAY_TYPES = ['Rest', 'Busy', 'Gym', 'Treat'];
+
+// Data rows to pre-format: ~13 months of daily logging. Kept modest on
+// purpose, since formatting every row of a 1000-row sheet is needlessly slow.
+var ROWS = 400;
 
 var DAILY_COLS = [
   ['Date',         'date',   'Local Singapore date, ISO format YYYY-MM-DD. One row per day.'],
@@ -77,12 +82,14 @@ function setUpNutriBoii() {
 
   ss.setSpreadsheetTimeZone('Asia/Singapore');
 
-  var msg = 'NutriBoii sheet ready.\n\n' +
-    'Next: Share -> General access -> "Anyone with the link" -> Viewer.\n\n' +
-    'Spreadsheet ID:\n' + ss.getId();
-  // getUi() is unavailable in some run contexts; the log always works, so a
-  // failed alert must not look like a failed setup.
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { Logger.log(msg); }
+  // Deliberately NO SpreadsheetApp.getUi().alert() here. Run from the Apps
+  // Script editor, getUi() succeeds but alert() blocks waiting for a modal
+  // that only renders in the spreadsheet tab, so the run looks like it hangs
+  // forever. Logger.log works in every context and never blocks.
+  Logger.log('NutriBoii sheet ready.');
+  Logger.log('Tabs: ' + ss.getSheets().map(function (sh) { return sh.getName(); }).join(', '));
+  Logger.log('Next: Share -> General access -> Anyone with the link -> Viewer.');
+  Logger.log('Spreadsheet ID: ' + ss.getId());
 }
 
 /* --------------------------------------------------------------------- */
@@ -121,7 +128,7 @@ function formatColumns(sh, cols, fromRow, nRows) {
 function buildDaily(ss) {
   var sh = sheetFor(ss, DAILY);
   writeHeader(sh, DAILY_COLS);
-  var rows = Math.max(sh.getMaxRows() - 1, 400);
+  var rows = ROWS;
   if (sh.getMaxRows() < rows + 1) sh.insertRowsAfter(sh.getMaxRows(), rows + 1 - sh.getMaxRows());
   formatColumns(sh, DAILY_COLS, 2, rows);
 
@@ -145,7 +152,7 @@ function buildDaily(ss) {
 function buildBaselines(ss) {
   var sh = sheetFor(ss, BASE);
   writeHeader(sh, BASE_COLS);
-  var rows = Math.max(sh.getMaxRows() - 1, 100);
+  var rows = 100;
   if (sh.getMaxRows() < rows + 1) sh.insertRowsAfter(sh.getMaxRows(), rows + 1 - sh.getMaxRows());
   formatColumns(sh, BASE_COLS, 2, rows);
   sh.setColumnWidth(1, 100);
@@ -172,7 +179,7 @@ function buildTargets(ss) {
   if (sh.getLastRow() < 2) {
     sh.getRange(2, 1, TGT_ROWS.length, 4).setValues(TGT_ROWS);
   }
-  formatColumns(sh, cols, 2, Math.max(sh.getMaxRows() - 1, 20));
+  formatColumns(sh, cols, 2, 20);
   sh.getRange(2, 2, TGT_ROWS.length, 1).setNumberFormat('0.##');
   sh.setColumnWidth(1, 180); sh.setColumnWidth(2, 90);
   sh.setColumnWidth(3, 70);  sh.setColumnWidth(4, 380);
