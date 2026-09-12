@@ -405,13 +405,21 @@ function tipOn(e, html) {
 function tipOff() { if (TIP) TIP.classList.remove('on'); }
 document.addEventListener('mouseleave', tipOff);
 
-/** Round an axis to human steps (1/2/2.5/5 x 10^n) so ticks read cleanly. */
+/** Round an axis to human steps so ticks read cleanly.
+ *  Takes the RAW data min/max, never a pre-padded range: flooring a padded
+ *  low to a multiple of a coarse step collapses the axis to zero and
+ *  flattens everything worth seeing. The floor/ceil supply the headroom. */
 function niceScale(lo, hi, ticks) {
   if (!(hi > lo)) { lo -= 1; hi += 1; }
   var raw = (hi - lo) / Math.max(1, ticks);
   var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
   var n = raw / mag;
-  var step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+  // a denser candidate set, so a range does not get forced onto a step
+  // several times larger than it needs
+  var cands = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10];
+  var pick = cands[cands.length - 1];
+  for (var i = 0; i < cands.length; i++) { if (n <= cands[i]) { pick = cands[i]; break; } }
+  var step = pick * mag;
   return { lo: Math.floor(lo / step) * step, hi: Math.ceil(hi / step) * step, step: step };
 }
 
@@ -432,8 +440,7 @@ function lineChart(w, opts) {
   if (!vals.length) return emptyChart(w, h, opts.emptyText || 'No data logged yet');
 
   var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
-  var padV = (hi - lo) * 0.16 || Math.abs(hi) * 0.08 || 1;
-  var ns = niceScale(lo - padV, hi + padV, 3);
+  var ns = niceScale(lo, hi, 4);
   lo = ns.lo; hi = ns.hi;
   var X = function (p) { return padL + p.x01 * iw; };
   var Y = function (v) { return padT + ih - (v - lo) / (hi - lo) * ih; };
@@ -506,8 +513,7 @@ function barChart(w, opts) {
   if (!vals.length) return emptyChart(w, h, opts.emptyText || 'No data logged yet');
 
   var hi = Math.max.apply(null, vals.concat([0])), lo = Math.min.apply(null, vals.concat([0]));
-  var padV = (hi - lo) * 0.15 || 1;
-  var ns = niceScale(lo - padV, hi + padV, 2);
+  var ns = niceScale(lo, hi, 3);
   lo = ns.lo; hi = ns.hi;
   var Y = function (v) { return padT + ih - (v - lo) / (hi - lo) * ih; };
   var step = iw / pts.length, bw = Math.max(3, Math.min(30, step * 0.52));
