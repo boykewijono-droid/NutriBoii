@@ -372,7 +372,13 @@ function summarise(row) {
 /* ===================================================================== */
 
 function jsonReply(o) {
-  return ContentService.createTextOutput(JSON.stringify(o, null, 2))
+  // Escape every non-ASCII character to \uXXXX. Valid JSON, and it makes the
+  // body charset-independent: without this an em dash in a note comes back
+  // double-encoded even though the cell itself holds it correctly.
+  var s = JSON.stringify(o, null, 2).replace(/[\u007f-\uffff]/g, function (c) {
+    return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
+  });
+  return ContentService.createTextOutput(s)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -387,7 +393,8 @@ function htmlReply(o) {
     }
   }
   var h =
-  '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<!doctype html><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>NutriBoii</title><style>' +
   'body{margin:0;background:#E9E4D8;color:#16150F;font:14px/1.55 ui-monospace,Menlo,monospace;padding:28px 20px}' +
   '.card{max-width:520px;margin:0 auto;background:#F4F1E8;border:1px solid #D6CFBE;padding:24px}' +
