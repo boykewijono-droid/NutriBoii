@@ -71,8 +71,8 @@ function seedSampleData() {
   if (!lock.tryLock(30000)) { Logger.log('Another run in progress.'); return; }
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var daily = mustGet(ss, 'Daily Log');
-    var base  = mustGet(ss, 'Baselines');
+    var daily = sdSheet(ss, 'Daily Log');
+    var base  = sdSheet(ss, 'Baselines');
     var props = PropertiesService.getDocumentProperties();
 
     // Refuse to touch rows we did not write.
@@ -85,7 +85,7 @@ function seedSampleData() {
 
     var dates = [];
     var rows = SAMPLE_DAYS.map(function (d) {
-      var date = offsetDate(d[0]);
+      var date = sdOffsetDate(d[0]);
       dates.push(date);
       //     Date  DayType Cal   P     F     C     Steps ActiveCal ExerciseCal BMR   TDEE  Def  GymDay Notes
       return [date, d[1], d[2], d[3], d[4], d[5], d[6], d[7],     d[8],       1672, '',   '',  d[9],  d[10]];
@@ -93,17 +93,17 @@ function seedSampleData() {
     daily.getRange(2, 1, rows.length, 14).setValues(rows);
 
     var scans = SAMPLE_SCANS.map(function (s) {
-      return [offsetDate(s[0]), s[1], s[2], s[3], s[4], s[5], s[6]];
+      return [sdOffsetDate(s[0]), s[1], s[2], s[3], s[4], s[5], s[6]];
     });
     base.getRange(2, 1, scans.length, 7).setValues(scans);
 
     props.setProperty(SAMPLE_PROP, JSON.stringify({
       daily: dates,
-      scans: SAMPLE_SCANS.map(function (s) { return offsetDate(s[0]); })
+      scans: SAMPLE_SCANS.map(function (s) { return sdOffsetDate(s[0]); })
     }));
 
     Logger.log('Seeded ' + rows.length + ' days and ' + scans.length + ' InBody scans.');
-    Logger.log('Gaps left at: ' + [offsetDate(-20), offsetDate(-19), offsetDate(-7)].join(', '));
+    Logger.log('Gaps left at: ' + [sdOffsetDate(-20), sdOffsetDate(-19), sdOffsetDate(-7)].join(', '));
     Logger.log('Reload the dashboard. Run clearSampleData when you are done.');
   } finally {
     lock.releaseLock();
@@ -117,22 +117,26 @@ function clearSampleData() {
   if (!raw) { Logger.log('No sample data recorded. Nothing to clear.'); return; }
 
   var mark = JSON.parse(raw);
-  var removed = deleteByDate(mustGet(ss, 'Daily Log'), mark.daily) +
-                deleteByDate(mustGet(ss, 'Baselines'),  mark.scans);
+  var removed = sdDeleteByDate(sdSheet(ss, 'Daily Log'), mark.daily) +
+                sdDeleteByDate(sdSheet(ss, 'Baselines'),  mark.scans);
   props.deleteProperty(SAMPLE_PROP);
   Logger.log('Removed ' + removed + ' sample rows.');
 }
 
 /* --------------------------------------------------------------------- */
 
-function mustGet(ss, name) {
+/* Helpers are prefixed sd* on purpose. Apps Script gives every .gs file in
+   the project ONE shared global scope, so a plain name like mustGet here
+   silently collides with the identically named helper in api.gs and one of
+   them wins at random depending on load order. */
+function sdSheet(ss, name) {
   var sh = ss.getSheetByName(name);
   if (!sh) throw new Error('Tab "' + name + '" not found. Run setUpNutriBoii first.');
   return sh;
 }
 
 /** A date N days from today, Singapore time, as 'YYYY-MM-DD'. */
-function offsetDate(n) {
+function sdOffsetDate(n) {
   var d = new Date();
   d.setDate(d.getDate() + n);
   return Utilities.formatDate(d, 'Asia/Singapore', 'yyyy-MM-dd');
@@ -140,7 +144,7 @@ function offsetDate(n) {
 
 /** Delete only the rows whose column A matches one of `wanted`. Bottom up, so
  *  the shifting row indices cannot make it skip or overshoot. */
-function deleteByDate(sh, wanted) {
+function sdDeleteByDate(sh, wanted) {
   if (sh.getLastRow() < 2) return 0;
   var want = {};
   (wanted || []).forEach(function (d) { want[d] = 1; });

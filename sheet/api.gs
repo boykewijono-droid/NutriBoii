@@ -40,6 +40,10 @@
  *
  *   Read a day back:   <URL>?token=T&action=get&date=2026-09-12
  *
+ *   Delete a row (confirm=yes is required):
+ *     <URL>?token=T&action=delete&date=2026-09-12&confirm=yes
+ *     add &tab=baselines to delete a scan instead of a daily row
+ *
  *   GET returns a small confirmation page, so a link is tappable on a phone.
  *
  *   PROGRAMMATIC CALLERS MUST ADD &format=json. Apps Script does not serve
@@ -100,7 +104,8 @@ function handle(e, verb) {
     else if (action === 'log')  out = logDay(p);
     else if (action === 'scan') out = addScan(p);
     else if (action === 'get')  out = getDay(p);
-    else throw new Error('Unknown action "' + action + '". Use log, scan, get or ping.');
+    else if (action === 'delete') out = deleteDay(p);
+    else throw new Error('Unknown action "' + action + '". Use log, scan, get, delete or ping.');
 
     return asHtml ? htmlReply(out) : jsonReply(out);
   } catch (err) {
@@ -230,6 +235,31 @@ function getDay(p) {
                      summary: 'No row logged for ' + date + '.' };
   return { ok: true, action: 'get', date: date, found: true, row: row,
            summary: summarise(row) };
+}
+
+/** Remove one row outright. Needed because a mislogged date otherwise can
+ *  only be fixed by hand in the sheet. Requires confirm=yes so a
+ *  mis-generated link cannot quietly destroy a day. */
+function deleteDay(p) {
+  if (String(p.confirm || '').toLowerCase() !== 'yes') {
+    throw new Error('Refusing to delete without confirm=yes.');
+  }
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
+  try {
+    var which = String(p.tab || 'daily').toLowerCase();
+    var onScans = (which === 'scan' || which === 'scans' || which === 'baselines');
+    var sh = mustGet(onScans ? BASE : DAILY);
+    var date = resolveDate(p.date);
+    var row = findRow(sh, date);
+    if (!row) {
+      return { ok: true, action: 'delete', date: date, deleted: false,
+               summary: 'No row for ' + date + ' in ' + sh.getName() + '. Nothing deleted.' };
+    }
+    sh.deleteRow(row);
+    return { ok: true, action: 'delete', date: date, deleted: true,
+             summary: 'Deleted ' + date + ' from ' + sh.getName() + '.' };
+  } finally { lock.releaseLock(); }
 }
 
 /* ===================================================================== */
@@ -449,6 +479,7 @@ function headingFor(o) {
   if (o.action === 'ping') return 'API is up';
   if (o.action === 'get')  return o.found ? 'NutriBoii' : 'Nothing logged';
   if (o.action === 'scan') return o.created ? 'Scan saved' : 'Scan updated';
+  if (o.action === 'delete') return o.deleted ? 'Deleted' : 'Nothing to delete';
   return o.created ? 'Logged' : 'Updated';
 }
 
