@@ -5,7 +5,25 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>NutriBoii</title>
 <meta name="description" content="Daily nutrition, activity and body-composition tracking.">
-<meta name="theme-color" content="#16150F">
+<meta name="theme-color" content="#E9E4D8">
+<script>
+/* Pick the theme BEFORE anything paints, so dark and night modes never flash
+   light first. app.js takes over once it loads. The 19 and 7 are the Night
+   hours; keep them in step with nightHours in assets/config.js. */
+(function () {
+  var m = 'system';
+  try { m = localStorage.getItem('nutriboii.theme') || 'system'; } catch (e) {}
+  var dark;
+  if (m === 'dark') dark = true;
+  else if (m === 'light') dark = false;
+  else if (m === 'night') {
+    var h = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', hourCycle: 'h23' }).format(new Date());
+    dark = h >= 19 || h < 7;
+  } else dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#121210' : '#E9E4D8');
+})();
+</script>
 <!-- Home-screen install. Without a manifest, Android adds a plain browser
      bookmark with a generic icon; with one it opens full-screen like an app. -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -43,9 +61,12 @@
         <h1 id="pageTitle">Today</h1>
         <div class="when" id="pageWhen">&mdash;</div>
       </div>
-      <div class="sync" id="sync">
-        <span class="dot"></span><span id="syncText">Loading&hellip;</span>
-        <button type="button" data-act="refresh" hidden id="refreshBtn">Refresh</button>
+      <div class="top-actions">
+        <div class="sync" id="sync">
+          <span class="dot"></span><span id="syncText">Loading&hellip;</span>
+          <button type="button" data-act="refresh" hidden id="refreshBtn">Refresh</button>
+        </div>
+        <button type="button" class="theme-btn" data-act="theme" id="themeBtn" aria-label="Change theme"><i></i><span id="themeText">Auto</span></button>
       </div>
     </header>
 

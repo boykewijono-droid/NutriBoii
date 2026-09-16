@@ -146,11 +146,16 @@ function pad(n) { return String(n).padStart(2, '0'); }
    2. Fetching the Sheet
    ====================================================================== */
 
+var DEFAULT_SHEET = CFG.sheetId ? String(CFG.sheetId).trim() : '';
+function savedSheet() { try { return (localStorage.getItem(LS_KEY) || '').trim(); } catch (e) { return ''; } }
+
+/** Where the sheet ID comes from, in order: a ?sheet= link, a choice saved in
+ *  this browser, then the default in config.js. The saved choice used to lose
+ *  to config.js, so "Sheet settings" quietly reverted on the next reload. */
 function sheetId() {
   var url = new URLSearchParams(location.search).get('sheet');
-  if (url) { try { localStorage.setItem(LS_KEY, url); } catch (e) {} return url.trim(); }
-  if (CFG.sheetId) return String(CFG.sheetId).trim();
-  try { return (localStorage.getItem(LS_KEY) || '').trim(); } catch (e) { return ''; }
+  if (url) { try { localStorage.setItem(LS_KEY, url.trim()); } catch (e) {} return url.trim(); }
+  return savedSheet() || DEFAULT_SHEET;
 }
 
 function tabUrl(tabName, key) {
@@ -176,6 +181,60 @@ function fetchTab(tabName, key, required) {
       if (required) throw e;
       return [];   // optional tabs degrade quietly to "use fallbacks"
     });
+}
+
+/* ======================================================================
+   Theme: Auto (follows the phone), Light, Dark, and Night (dark between
+   the Singapore hours in config.nightHours). The <head> of index.html
+   applies the same choice before first paint, so there is no light flash.
+   ====================================================================== */
+var THEME_KEY = 'nutriboii.theme';
+var THEMES = ['system', 'light', 'dark', 'night'];
+var THEME_NAMES = { system: 'Auto', light: 'Light', dark: 'Dark', night: 'Night' };
+var themeMemory = null;           // used when localStorage is unavailable
+
+function themeMode() {
+  var m = themeMemory;
+  try { m = localStorage.getItem(THEME_KEY) || m; } catch (e) {}
+  return THEMES.indexOf(m) >= 0 ? m : 'system';
+}
+function sgtClock() {
+  var parts = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date());
+  var get = function (t) { return +(parts.filter(function (p) { return p.type === t; })[0] || { value: 0 }).value; };
+  return { h: get('hour'), m: get('minute') };
+}
+function isNight() {
+  var nh = CFG.nightHours || [19, 7], h = sgtClock().h;
+  return nh[0] > nh[1] ? (h >= nh[0] || h < nh[1]) : (h >= nh[0] && h < nh[1]);
+}
+function applyTheme() {
+  var m = themeMode();
+  var dark = m === 'dark' ? true : m === 'light' ? false : m === 'night' ? isNight()
+           : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  var root = document.documentElement, next = dark ? 'dark' : 'light';
+  if (root.getAttribute('data-theme') !== next) root.setAttribute('data-theme', next);
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#121210' : '#E9E4D8');
+  var nh = CFG.nightHours || [19, 7];
+  var label = $('#themeText'), btn = $('#themeBtn');
+  if (label) label.textContent = THEME_NAMES[m];
+  if (btn) {
+    var what = m === 'night' ? 'Night: dark from ' + nh[0] + ':00 to ' + nh[1] + ':00 Singapore time'
+             : m === 'system' ? 'Auto: follows your phone' : THEME_NAMES[m];
+    btn.title = what;
+    btn.setAttribute('aria-label', 'Theme ' + what + '. Tap to change.');
+  }
+}
+function cycleTheme() {
+  var next = THEMES[(THEMES.indexOf(themeMode()) + 1) % THEMES.length];
+  themeMemory = next;
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+  applyTheme();
+}
+if (window.matchMedia) {
+  var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  if (darkQuery.addEventListener) darkQuery.addEventListener('change', applyTheme);
 }
 
 /* ======================================================================
@@ -339,13 +398,14 @@ function buildDays(rows, scans, targets, today) {
     // A day with no calories logged isn't a logged day for averaging purposes.
     d.hasIntake = d.cal != null;
 
-    // Today is IN PROGRESS until activity is logged. Food is logged meal by
-    // meal and the Samsung Health numbers arrive at night, so before then both
-    // halves of the deficit are partial: intake is only what has been eaten so
-    // far, and the target is resting burn alone. Treating that as a finished
-    // day put a green "+900" in the hero after breakfast and inflated the
-    // 7-day average. A past date is finished by definition.
-    d.inProgress = date === today && d.active == null;
+    // Today stays OPEN until the day type is logged. Food arrives meal by meal
+    // and, once the phone sync is running, activity arrives every hour, so
+    // activity being present no longer means the day is finished. Claude asks
+    // for the day type once, with the day's final totals: that is the close.
+    // Until then both halves of the deficit are partial, and treating the day
+    // as finished put a green "+900" in the hero after breakfast and inflated
+    // the 7-day average. A past date is closed by definition.
+    d.inProgress = date === today && !d.dayType;
     d.countable  = d.hasIntake && !d.inProgress;
 
     // Fat has three states, not two. A hard line made 72g look as bad as
@@ -530,15 +590,26 @@ function lineChart(w, opts) {
   var h = opts.height || 210, padL = 44, padR = 12, padT = 14, padB = 26;
   var iw = Math.max(10, w - padL - padR), ih = h - padT - padB;
   var pts = opts.points;
-  var vals = pts.map(function (p) { return p.y; }).filter(function (v) { return v != null; });
+  if (!pts.some(function (p) { return p.y != null; })) return emptyChart(w, h, opts.emptyText || 'No data logged yet');
+
+  // The scale follows finished days and targets. A half-logged today would
+  // otherwise drag the axis down and flatten every finished day; it is clamped
+  // onto the chart instead, with a caret when its real value is off-scale.
+  var vals = [];
+  pts.forEach(function (p) {
+    if (p.y != null && !p.pending) vals.push(p.y);
+    if (p.tgt != null) vals.push(p.tgt);
+  });
   if (opts.target != null) vals.push(opts.target);
-  if (!vals.length) return emptyChart(w, h, opts.emptyText || 'No data logged yet');
+  if (!vals.length) pts.forEach(function (p) { if (p.y != null) vals.push(p.y); });
 
   var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
   var ns = niceScale(lo, hi, 4);
   lo = ns.lo; hi = ns.hi;
   var X = function (p) { return padL + p.x01 * iw; };
   var Y = function (v) { return padT + ih - (v - lo) / (hi - lo) * ih; };
+  var yv = function (p) { return p.pending ? clamp(p.y, lo, hi) : p.y; };
+  var half = pts.length > 1 ? iw / (pts.length - 1) / 2 : 8;
 
   var s = svgOpen(w, h);
 
@@ -551,6 +622,23 @@ function lineChart(w, opts) {
   if (opts.target != null) {
     s += '<line class="tgt" x1="' + padL + '" y1="' + Y(opts.target).toFixed(1) + '" x2="' + (w - padR) + '" y2="' + Y(opts.target).toFixed(1) + '"/>';
   }
+  // Each day's OWN target as a step line. A single averaged line hid that a
+  // gym day's target is 400+ kcal higher than a rest day's, so a dot above
+  // the old line did not actually mean a surplus that day.
+  var steps = [], run0 = [];
+  pts.forEach(function (p) {
+    if (p.tgt == null) { if (run0.length) { steps.push(run0); run0 = []; } }
+    else run0.push(p);
+  });
+  if (run0.length) steps.push(run0);
+  steps.forEach(function (r) {
+    var d = '';
+    r.forEach(function (p, i) {
+      var x1 = Math.max(padL, X(p) - half), x2 = Math.min(w - padR, X(p) + half), y = Y(p.tgt).toFixed(1);
+      d += (i ? ' L' : 'M') + x1.toFixed(1) + ' ' + y + ' L' + x2.toFixed(1) + ' ' + y;
+    });
+    s += '<path class="tgt" d="' + d + '"/>';
+  });
 
   // split into runs of consecutive logged points. A pending point (today,
   // still being logged) never joins a solid run.
@@ -581,7 +669,7 @@ function lineChart(w, opts) {
     for (var j = i - 1; j >= 0; j--) {
       if (pts[j].y != null && !pts[j].pending) {
         s += '<path class="ser-pend" d="M' + X(pts[j]).toFixed(1) + ' ' + Y(pts[j].y).toFixed(1) +
-             ' L' + X(p).toFixed(1) + ' ' + Y(p.y).toFixed(1) + '"/>';
+             ' L' + X(p).toFixed(1) + ' ' + Y(yv(p)).toFixed(1) + '"/>';
         break;
       }
     }
@@ -597,8 +685,12 @@ function lineChart(w, opts) {
   pts.forEach(function (p) {
     if (p.y == null) return;
     var cls = p.pending ? 'pt p' : p.flag ? 'pt f' : p.mark ? 'pt a' : 'pt';
-    var r = pts.length > 20 ? 2.4 : 3.4;
-    s += '<circle class="' + cls + '" cx="' + X(p).toFixed(1) + '" cy="' + Y(p.y).toFixed(1) + '" r="' + r + '"/>';
+    var r = pts.length > 20 ? 2.4 : 3.4, cy = Y(yv(p)), cx = X(p);
+    s += '<circle class="' + cls + '" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + r + '"/>';
+    if (p.pending && p.y < lo) {
+      s += '<path class="caret" d="M' + (cx - 4).toFixed(1) + ' ' + (cy + 7).toFixed(1) + ' L' + (cx + 4).toFixed(1) + ' ' +
+           (cy + 7).toFixed(1) + ' L' + cx.toFixed(1) + ' ' + (cy + 11).toFixed(1) + ' Z"/>';
+    }
   });
 
   // x labels, thinned by PIXEL POSITION rather than by index. Index
@@ -611,8 +703,9 @@ function lineChart(w, opts) {
     // the final date is the one worth keeping, so evict the label it crowds
     if (isLast) { keep.pop(); keep.push(p); lastX = x; }
   });
-  keep.forEach(function (p) {
-    s += '<text class="ax' + (p.y == null ? ' dim' : '') + '" x="' + X(p).toFixed(1) + '" y="' + (h - 8) + '" text-anchor="middle">' + esc(p.label) + '</text>';
+  keep.forEach(function (p, k) {
+    var txt = p.labelFull && (k === 0 || p.mkey !== keep[k - 1].mkey) ? p.labelFull : p.label;
+    s += '<text class="ax' + (p.y == null ? ' dim' : '') + '" x="' + X(p).toFixed(1) + '" y="' + (h - 8) + '" text-anchor="middle">' + esc(txt) + '</text>';
   });
 
   // hit targets
@@ -665,7 +758,8 @@ function barChart(w, opts) {
 
   pts.forEach(function (p, i) {
     var x = padL + step * i;
-    s += '<rect class="hit" x="' + x.toFixed(1) + '" y="' + padT + '" width="' + step.toFixed(1) + '" height="' + ih + '" data-tip="' + esc(p.tip) + '"/>' +
+    s += '<rect class="hit" x="' + x.toFixed(1) + '" y="' + padT + '" width="' + step.toFixed(1) + '" height="' + ih + '" data-tip="' + esc(p.tip) + '"' +
+         (p.date ? ' data-day="' + p.date + '"' : '') + '/>' +
          '<rect class="hl-col" x="' + x.toFixed(1) + '" y="' + padT + '" width="' + step.toFixed(1) + '" height="' + ih + '"/>';
   });
   return s + '</svg>';
@@ -675,7 +769,8 @@ function hitLayer(pts, X, padT, ih, step) {
   var s = '';
   pts.forEach(function (p) {
     var x = X(p) - step / 2;
-    s += '<rect class="hit" x="' + x.toFixed(1) + '" y="' + padT + '" width="' + Math.max(6, step).toFixed(1) + '" height="' + ih + '" data-tip="' + esc(p.tip) + '"/>' +
+    s += '<rect class="hit" x="' + x.toFixed(1) + '" y="' + padT + '" width="' + Math.max(6, step).toFixed(1) + '" height="' + ih + '" data-tip="' + esc(p.tip) + '"' +
+         (p.date ? ' data-day="' + p.date + '"' : '') + '/>' +
          '<rect class="hl-col" x="' + x.toFixed(1) + '" y="' + padT + '" width="' + Math.max(6, step).toFixed(1) + '" height="' + ih + '"/>';
   });
   return s;
@@ -704,14 +799,14 @@ function dayTip(d) {
   if (d.dayType) s += ' <em>' + esc(d.dayType) + '</em>';
   if (d.inProgress) {
     s += '<br>' + (d.cal == null ? '<em>no intake logged</em>' : nf(d.cal) + ' kcal <em>so far</em>');
-    s += '<br><em>deficit settles once activity is logged</em>';
+    s += '<br><em>day still open, deficit not final</em>';
   } else {
     s += '<br>' + (d.cal == null ? '<em>no intake logged</em>' : nf(d.cal) + ' kcal');
     if (d.tdee != null) s += ' <em>/ ' + nf(d.tdee) + '</em>';
     if (d.deficit != null) s += '<br>' + signed(d.deficit) + ' kcal ' + (d.deficit >= 0 ? 'deficit' : 'surplus');
   }
   if (d.protein != null) s += '<br>P ' + nf(d.protein) + 'g' +
-    (d.proteinWarn ? ' <span class="w">low</span>' : d.proteinLow ? ' <em>so far</em>' : '');
+    (d.proteinWarn ? ' <span class="w">short</span>' : d.proteinLow ? ' <em>so far</em>' : '');
   if (d.fat != null) s += ' &nbsp;F ' + nf(d.fat) + 'g' +
     (d.fatState === 'over' ? ' <span class="w">over</span>' : d.fatState === 'caution' ? ' <span class="c">high</span>' : '');
   return s;
@@ -743,8 +838,12 @@ function markNav() {
     b.setAttribute('aria-current', b.dataset.view === current ? 'true' : 'false');
   });
 }
-function go(id) {
+/** keepScroll: a background refresh re-renders the current view in place, so
+ *  it must not throw the page back to the top. Only a real change of view
+ *  scrolls. */
+function go(id, keepScroll) {
   if (!VIEWS.some(function (v) { return v.id === id; })) id = 'today';
+  var changed = id !== current;
   current = id; markNav();
   VIEWS.forEach(function (v) { $('#view-' + v.id).classList.toggle('on', v.id === id); });
   var v = VIEWS.filter(function (x) { return x.id === id; })[0];
@@ -752,7 +851,7 @@ function go(id) {
   $('#pageWhen').textContent = pageWhen(id);
   if (location.hash.slice(1) !== id) history.replaceState(null, '', '#' + id);
   charts.forEach(drawChart);
-  window.scrollTo(0, 0);
+  if (changed && !keepScroll) window.scrollTo(0, 0);
 }
 function pageWhen(id) {
   if (id === 'today') return fmtDay(M.today, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' · SGT';
@@ -767,7 +866,7 @@ function renderToday() {
   var t = M.targets, d = getDay(M.today);
   var host = $('#view-today'), h = '';
 
-  h += !(d.logged && d.hasIntake) ? heroVoid(d) : d.inProgress ? heroProgress(d, t) : heroSlab(d);
+  h += !(d.logged && d.hasIntake) ? heroVoid(d) : d.inProgress ? heroProgress(d, t) : heroSlab(d, t);
 
   // The two numbers that actually predict progress, given side by side.
   var roll = rollingDeficit(M.today, CFG.rollingWindowDays || 7);
@@ -778,9 +877,9 @@ function renderToday() {
 
   h += '<div class="sec"><div class="sec-head"><h2>Activity</h2><span class="lbl">Samsung Health</span></div>' +
        '<div class="grid g4">' +
-         cell('Steps', d.steps == null ? null : nf(d.steps), null) +
-         cell('Active', d.active == null ? null : nf(d.active), 'kcal') +
-         cell('Exercise', d.exercise == null ? null : nf(d.exercise), 'kcal') +
+         cell('Steps', d.steps == null ? null : nf(d.steps), null, null, d.inProgress && d.steps != null ? 'so far today' : null) +
+         cell('Active', d.active == null ? null : nf(d.active), 'kcal', null, d.inProgress && d.active != null ? 'so far today' : null) +
+         cell('Exercise', d.exercise == null ? null : nf(d.exercise), 'kcal', null, d.inProgress && d.exercise != null ? 'so far today' : null) +
          cell('Gym', gymLabel(d) == null ? null : esc(gymLabel(d)), null) +
        '</div></div>';
 
@@ -791,39 +890,34 @@ function renderToday() {
   host.innerHTML = h;
 }
 
-function heroSlab(d) {
+function heroSlab(d, t) {
   var over = d.deficit != null && d.deficit < 0;
   var pct = d.tdee ? clamp(d.cal / d.tdee * 100, 0, 100) : 0;
   return '<div class="slab">' +
-    '<div class="slab-top"><span class="lbl">' + esc(relDay(d.date)) + ' · intake</span>' +
+    '<div class="slab-top"><span class="lbl">' + esc(relDay(d.date)) + ' · complete</span>' +
       (d.dayType ? '<span class="chip ' + d.dayType + '">' + d.dayType + '</span>' : '') +
     '</div>' +
     '<div class="figs">' +
       '<div class="fig lead"><b>' + nf(d.cal) + '<span class="u">kcal</span></b>' +
-        '<small>' + (d.tdee ? 'of ' + nf(d.tdee) + ' target' : 'no target — activity not logged') + '</small></div>' +
+        '<small>' + (d.tdee ? 'eaten, of ' + nf(d.tdee) + ' burned' : 'eaten') + '</small></div>' +
       (d.deficit == null ? '' :
       '<div class="fig ' + (over ? 'bad' : 'good') + '"><b>' + signed(d.deficit) + '<span class="u">kcal</span></b>' +
         '<small>' + (over ? 'surplus today' : 'deficit today') + '</small></div>') +
-      (d.protein == null ? '' :
-      '<div class="fig ' + (d.proteinWarn ? 'bad' : 'lead') + '"><b>' + nf(d.protein) + '<span class="u">g</span></b>' +
-        '<small>protein' + (d.proteinWarn ? ' — under floor' : '') + '</small></div>') +
     '</div>' +
     (d.tdee ?
     '<div class="energy"><div class="energy-track">' +
       '<div class="energy-fill' + (over ? ' over' : '') + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
-      '<div class="energy-marks"><span>0</span><span>' + nf(d.tdee) + ' kcal burned</span></div></div>' : '') +
+      '<div class="energy-marks"><span>eaten</span><span>' + nf(d.tdee) + ' kcal burned</span></div></div>' : '') +
+    macroStats(d, t) +
   '</div>';
 }
 
-/** Today while it is still being logged. Shows what is actually known, intake
- *  and protein so far, and holds back the deficit, which cannot be known until
- *  tonight's activity is in. Resting burn is shown for context because it is
- *  the one part of the target that is already fixed. */
+/** Today while it is still open. Shows what is actually known: what has been
+ *  eaten, an estimate of what has been burned up to now, and protein and fat
+ *  with their balance. The day's deficit is held back until it is closed. */
 function heroProgress(d, t) {
-  var floor = t.protein_floor_g;
-  var toGo = d.protein != null && floor != null ? Math.max(0, Math.round(floor - d.protein)) : null;
-  var bmr = d.bmr;
-  var pct = bmr ? clamp(d.cal / bmr * 100, 0, 100) : 0;
+  var burned = burnedSoFar(d);
+  var synced = d.active != null || d.exercise != null;
   return '<div class="slab">' +
     '<div class="slab-top"><span class="lbl">Today · so far</span>' +
       (d.dayType ? '<span class="chip ' + d.dayType + '">' + d.dayType + '</span>' : '') +
@@ -831,19 +925,59 @@ function heroProgress(d, t) {
     '<div class="figs">' +
       '<div class="fig lead"><b>' + nf(d.cal) + '<span class="u">kcal</span></b>' +
         '<small>eaten so far</small></div>' +
-      (d.protein == null ? '' :
-      '<div class="fig lead"><b>' + nf(d.protein) + '<span class="u">g</span></b>' +
-        '<small>protein' + (toGo == null ? '' : toGo > 0 ? ' · ' + nf(toGo) + ' g to the floor' : ' · floor reached') +
-        '</small></div>') +
+      (burned == null ? '' :
+      '<div class="fig lead"><b>≈' + nf(burned) + '<span class="u">kcal</span></b>' +
+        '<small>burned so far · ' + (synced ? 'resting burn to now + activity' : 'resting burn to now') + '</small></div>') +
     '</div>' +
-    '<div class="energy">' +
-      (bmr ?
-      '<div class="energy-track"><div class="energy-fill" style="width:' + pct.toFixed(1) + '%"></div></div>' +
-      '<div class="energy-marks"><span>0</span><span>' + nf(bmr) + ' kcal resting burn</span></div>' : '') +
-      '<div class="energy-note">The deficit settles once tonight\'s activity is logged. ' +
-        'Until then today stays out of the 7‑day average.</div>' +
-    '</div>' +
+    macroStats(d, t) +
+    '<div class="energy-note">Today stays open until you close it with Claude, which logs the day type. ' +
+      'Until then it is left out of the 7‑day average.</div>' +
   '</div>';
+}
+
+/** Estimated calories burned from midnight until now: resting burn for the
+ *  share of the day that has passed, plus the activity synced so far, using
+ *  the same weights as the daily target. */
+function burnedSoFar(d) {
+  if (d.bmr == null) return null;
+  var c = sgtClock();
+  var tf = CFG.tdee || {}, exF = tf.exerciseFactor == null ? 0.7 : tf.exerciseFactor,
+      inF = tf.incidentalFactor == null ? 0.5 : tf.incidentalFactor;
+  var ex = d.exercise || 0, ac = d.active || 0;
+  return Math.round(d.bmr * (c.h * 60 + c.m) / 1440 + ex * exF + Math.max(0, ac - ex) * inF);
+}
+
+/** Protein and fat at a glance, the balance said in plain words: "57 g short
+ *  of your 150 g target" rather than "under floor", which only makes sense if
+ *  you already know what the floor is. */
+function macroStats(d, t) {
+  var out = '';
+  var target = t.protein_floor_g, limit = t.fat_ceiling_g;
+  var red = t.fat_red_g == null ? limit : t.fat_red_g;
+  if (d.protein != null && target != null) {
+    var diff = Math.round(d.protein - target);
+    var pCls = diff >= 0 ? 'good' : d.inProgress ? 'pend' : 'bad';
+    var pBal = diff >= 0 ? nf(diff) + ' g above your ' + nf(target) + ' g target'
+             : nf(-diff) + ' g ' + (d.inProgress ? 'to go to' : 'short of') + ' your ' + nf(target) + ' g target';
+    var pMax = Math.max(target * 1.25, d.protein);
+    out += stat('Protein', d.protein, pCls, pBal, d.protein / pMax, target / pMax);
+  }
+  if (d.fat != null && limit != null) {
+    var left = Math.round(limit - d.fat);
+    var fCls = d.fatState === 'over' ? 'bad' : d.fatState === 'caution' ? 'caution' : '';
+    var fBal = left >= 0 ? nf(left) + ' g left before your ' + nf(limit) + ' g limit'
+             : nf(-left) + ' g over your ' + nf(limit) + ' g limit';
+    var fMax = Math.max(red * 1.3, d.fat);
+    out += stat('Fat', d.fat, fCls, fBal, d.fat / fMax, limit / fMax);
+  }
+  return out ? '<div class="stats">' + out + '</div>' : '';
+}
+function stat(name, value, cls, balance, frac, mark) {
+  return '<div class="stat ' + (cls || '') + '"><span class="k">' + name + '</span>' +
+    '<b class="v">' + nf(value) + '<span class="u">g</span></b>' +
+    '<div class="mini"><i style="width:' + clamp(frac * 100, 0, 100).toFixed(1) + '%"></i>' +
+      '<s style="left:' + clamp(mark * 100, 0, 100).toFixed(1) + '%"></s></div>' +
+    '<span class="bal">' + esc(balance) + '</span></div>';
 }
 
 function heroVoid(d) {
@@ -855,7 +989,7 @@ function heroVoid(d) {
       '<small style="margin-top:12px">' + (d.logged
         ? 'A row exists for today, but no calories yet.'
         : 'Nothing written for today yet — talk to Claude and the row appears here straight away.') + '</small></div></div>' +
-    (lastD ? '<div class="energy"><div class="energy-marks" style="border-top:1px solid rgba(244,241,232,.14);padding-top:12px">' +
+    (lastD ? '<div class="energy"><div class="energy-marks" style="border-top:1px solid var(--slab-line);padding-top:12px">' +
       '<span>Last logged · ' + esc(fmtDay(last)) + '</span><span>' + nf(lastD.cal) + ' kcal · ' + signed(lastD.deficit) + '</span></div></div>' : '') +
   '</div>';
 }
@@ -864,7 +998,7 @@ function rollingCell(r) {
   if (r.avg == null) {
     return '<div class="cell hl"><span class="lbl">' + r.of + '-day average deficit</span>' +
       '<span class="big none">—</span><span class="sub">' +
-      (r.pendingToday ? 'Today is still in progress. It joins once activity is logged.'
+      (r.pendingToday ? 'Today is still open. It counts once you close it with Claude.'
                       : 'No finished days in the last ' + r.of + '.') + '</span></div>';
   }
   var good = r.avg >= 0;
@@ -872,7 +1006,7 @@ function rollingCell(r) {
     '<span class="big ' + (good ? 'good' : 'bad') + '">' + signed(Math.round(r.avg)) + '<span class="u">kcal/day</span></span>' +
     '<span class="sub">Across ' + r.n + ' finished day' + (r.n === 1 ? '' : 's') + ' of the last ' + r.of + '. ' +
       (good ? '≈ ' + nf(r.avg * 7 / 7700, 2) + ' kg of fat per week.' : 'Currently in surplus.') +
-      (r.pendingToday ? ' Today joins once activity is logged.' : '') +
+      (r.pendingToday ? ' Today counts once you close it with Claude.' : '') +
     '</span></div>';
 }
 
@@ -921,23 +1055,24 @@ function macroBlock(d, t) {
   }
   var floor = t.protein_floor_g, goal = t.protein_goal_g, ceil = t.fat_ceiling_g;
   var h = '<div class="sec"><div class="sec-head"><h2>Macros</h2>' +
-    '<span class="lbl">' + (d.inProgress ? 'So far today · ' : '') + 'Protein floor ' + nf(floor) + 'g · Fat amber ' + nf(ceil) + '+, red ' + nf(t.fat_red_g) + '+</span></div><div class="macros">';
+    '<span class="lbl">' + (d.inProgress ? 'So far today · ' : '') + 'Protein target <span class="nc">' + nf(floor) + ' g</span> · Fat limit <span class="nc">' + nf(ceil) + ' g</span></span></div><div class="macros">';
 
   // Protein — under target is a warning state, same weight as fat over.
   var pMax = Math.max(goal * 1.25, d.protein || 0);
   h += '<div class="macro ' + (d.proteinWarn ? 'warn' : d.proteinLow ? 'pend' : 'ok') + '">' +
     '<div class="macro-top"><span class="macro-name">Protein</span>' +
-    '<span class="macro-val"><b>' + nf(d.protein) + '</b> g · floor ' + nf(floor) + 'g</span></div>' +
+    '<span class="macro-val"><b>' + nf(d.protein) + '</b> g · target ' + nf(floor) + ' g</span></div>' +
     '<div class="track">' +
       '<div class="band" style="left:' + (floor / pMax * 100) + '%;width:' + ((goal - floor) / pMax * 100) + '%"></div>' +
       '<div class="fill" style="width:' + clamp((d.protein || 0) / pMax * 100, 0, 100) + '%"></div>' +
       '<div class="notch" style="left:' + (floor / pMax * 100) + '%"></div>' +
     '</div>';
   h += d.proteinWarn
-    ? '<div class="macro-note">Protein under floor by ' + nf(floor - d.protein) + 'g — on a cut this is where muscle goes.</div>'
+    ? '<div class="macro-note">' + nf(floor - d.protein) + ' g short of the ' + nf(floor) + ' g target — on a cut this is where muscle goes.</div>'
     : d.proteinLow
-      ? '<div class="macro-foot">' + nf(floor - d.protein) + 'g to go to the ' + nf(floor) + 'g floor. The day is still in progress.</div>'
-      : '<div class="macro-foot">In the ' + nf(floor) + '–' + nf(goal) + 'g band.</div>';
+      ? '<div class="macro-foot">' + nf(floor - d.protein) + ' g to go to the ' + nf(floor) + ' g target. The day is still open.</div>'
+      : '<div class="macro-foot">' + (d.protein > goal ? nf(d.protein - floor) + ' g above the target.'
+                                     : 'Within the ' + nf(floor) + '–' + nf(goal) + ' g target range.') + '</div>';
   h += '</div>';
 
   // Fat — three states. The amber band between the ceiling and the red
@@ -946,7 +1081,7 @@ function macroBlock(d, t) {
   var fMax = Math.max(red * 1.4, d.fat || 0);
   h += '<div class="macro ' + (d.fatState === 'over' ? 'warn' : d.fatState === 'caution' ? 'caution' : 'ok') + '">' +
     '<div class="macro-top"><span class="macro-name">Fat</span>' +
-    '<span class="macro-val"><b>' + nf(d.fat) + '</b> g · ceiling ' + nf(ceil) + 'g</span></div>' +
+    '<span class="macro-val"><b>' + nf(d.fat) + '</b> g · limit ' + nf(ceil) + ' g</span></div>' +
     '<div class="track">' +
       '<div class="band amber" style="left:' + (ceil / fMax * 100) + '%;width:' + ((red - ceil) / fMax * 100) + '%"></div>' +
       '<div class="fill" style="width:' + clamp((d.fat || 0) / fMax * 100, 0, 100) + '%"></div>' +
@@ -954,13 +1089,13 @@ function macroBlock(d, t) {
       '<div class="notch red" style="left:' + (red / fMax * 100) + '%"></div>' +
     '</div>';
   if (d.fatState === 'over') {
-    h += '<div class="macro-note">Fat over by ' + nf(d.fatOverBy) + 'g' +
+    h += '<div class="macro-note">' + nf(d.fatOverBy) + ' g over the ' + nf(ceil) + ' g limit' +
       (d.drivers.length ? ' — driven by: ' + esc(d.drivers.join(', ')) : ' — no contributing foods named in the note') + '.</div>';
   } else if (d.fatState === 'caution') {
-    h += '<div class="macro-note caution">' + nf(d.fatOverBy) + 'g over the ceiling, under the ' + nf(red) + 'g line' +
+    h += '<div class="macro-note caution">' + nf(d.fatOverBy) + ' g over the ' + nf(ceil) + ' g limit, still under ' + nf(red) + ' g' +
       (d.drivers.length ? ' — from: ' + esc(d.drivers.join(', ')) : '') + '.</div>';
   } else if (d.fat != null) {
-    h += '<div class="macro-foot">' + nf(ceil - d.fat) + 'g under the ceiling.</div>';
+    h += '<div class="macro-foot">' + nf(ceil - d.fat) + ' g left before the limit.</div>';
   }
   h += '</div>';
 
@@ -968,7 +1103,7 @@ function macroBlock(d, t) {
   h += '<div class="macro"><div class="macro-top"><span class="macro-name">Carbs</span>' +
     '<span class="macro-val"><b>' + nf(d.carbs) + '</b> g</span></div>' +
     '<div class="track"><div class="fill" style="width:' + clamp((d.carbs || 0) / 260 * 100, 0, 100) + '%"></div></div>' +
-    '<div class="macro-foot">No ceiling — carbs fill whatever calories protein and fat leave.</div></div>';
+    '<div class="macro-foot">No limit — carbs fill whatever calories protein and fat leave.</div></div>';
 
   return h + '</div></div>';
 }
@@ -1009,13 +1144,14 @@ function renderWeek() {
 
   mountChart($('#cWeekCal'), function (w) {
     return chartHead('Intake vs target',
-        '<span><i class="key"></i>intake</span><span><i class="key t"></i>target</span><span><i class="key g"></i>gap in log</span>' +
+        '<span><i class="key"></i>intake</span><span><i class="key t"></i>that day\'s target</span><span><i class="key g"></i>gap in log</span>' +
+        (days.some(function (d) { return d.flagged; }) ? '<span><i class="key fd"></i>protein short or fat over</span>' : '') +
         (pending ? '<span><i class="key p"></i>today, so far</span>' : '')) +
       lineChart(w, {
-        target: mean(days.map(function (d) { return d.countable ? d.tdee : null; })),
         fmtY: function (v) { return nf(Math.round(v / 10) * 10); },
         points: days.map(function (d, i) {
-          return { x01: i / Math.max(1, days.length - 1), y: d.cal, pending: d.inProgress, label: fmtDay(d.date, { weekday: 'short', day: 'numeric', month: undefined }), tip: dayTip(d), flag: d.flagged };
+          return { x01: i / Math.max(1, days.length - 1), y: d.cal, tgt: d.countable ? d.tdee : null, pending: d.inProgress,
+                   date: d.date, label: fmtDay(d.date, { weekday: 'short', day: 'numeric', month: undefined }), tip: dayTip(d), flag: d.flagged };
         })
       });
   });
@@ -1027,7 +1163,7 @@ function renderWeek() {
         height: 170,
         fmtY: function (v) { return signed(Math.round(v / 50) * 50); },
         points: days.map(function (d) {
-          return { y: d.countable ? d.deficit : null, pending: d.inProgress && d.hasIntake, label: fmtDay(d.date, { weekday: 'short', day: undefined, month: undefined }), tip: dayTip(d) };
+          return { y: d.countable ? d.deficit : null, pending: d.inProgress && d.hasIntake, date: d.date, label: fmtDay(d.date, { weekday: 'short', day: undefined, month: undefined }), tip: dayTip(d) };
         })
       });
   });
@@ -1039,23 +1175,25 @@ function chartHead(title, legend) {
 
 function dayTable(days) {
   var rows = days.slice().reverse().map(function (d) {
+    var when = '<span class="d-long">' + esc(fmtDay(d.date)) + '</span>' +
+               '<span class="d-short">' + esc(fmtDay(d.date, { month: undefined })) + '</span>';
     if (!d.logged) {
-      return '<tr class="void"><td>' + esc(fmtDay(d.date)) + '</td>' +
-        '<td colspan="6" style="text-align:left">No data logged</td></tr>';
+      return '<tr class="void"><td>' + when + '</td><td class="opt"></td>' +
+        '<td colspan="4" style="text-align:left">No data logged</td><td class="opt"></td></tr>';
     }
     return '<tr class="day' + (d.date === M.today ? ' today' : '') + '" data-day="' + d.date + '" tabindex="0">' +
-      '<td>' + esc(fmtDay(d.date)) + '</td>' +
-      '<td>' + (d.dayType ? '<span class="dt ' + d.dayType + '">' + d.dayType + '</span>' : '<span class="dash">—</span>') + '</td>' +
+      '<td>' + when + '</td>' +
+      '<td class="opt">' + (d.dayType ? '<span class="dt ' + d.dayType + '">' + d.dayType + '</span>' : '<span class="dash">—</span>') + '</td>' +
       '<td><b>' + nf(d.cal) + '</b></td>' +
       (d.inProgress
         ? '<td><span class="dash">so far</span></td>'
         : '<td' + (d.deficit != null && d.deficit < 0 ? ' class="warn"' : '') + '>' + signed(d.deficit) + '</td>') +
       '<td' + (d.proteinWarn ? ' class="warn"' : '') + '>' + nf(d.protein) + '</td>' +
       '<td' + (d.fatState === 'over' ? ' class="warn"' : d.fatState === 'caution' ? ' class="caution"' : '') + '>' + nf(d.fat) + '</td>' +
-      '<td>' + nf(d.steps) + '</td></tr>';
+      '<td class="opt">' + nf(d.steps) + '</td></tr>';
   }).join('');
   return '<div class="tw"><table><thead><tr>' +
-    '<th>Date</th><th>Type</th><th>kcal</th><th>Deficit</th><th>Protein g</th><th>Fat g</th><th>Steps</th>' +
+    '<th>Date</th><th class="opt">Type</th><th>kcal</th><th>Deficit</th><th>Protein g</th><th>Fat g</th><th class="opt">Steps</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 
@@ -1154,14 +1292,17 @@ function renderTrends() {
   var pendingT = days.some(function (d) { return d.inProgress && d.hasIntake; });
   mountChart($('#cTrendCal'), function (w) {
     return chartHead('Intake vs target',
-        '<span><i class="key"></i>intake</span><span><i class="key t"></i>avg target</span><span><i class="key g"></i>gap in log</span>' +
+        '<span><i class="key"></i>intake</span><span><i class="key t"></i>that day\'s target</span><span><i class="key g"></i>gap in log</span>' +
+        (days.some(function (d) { return d.flagged; }) ? '<span><i class="key fd"></i>protein short or fat over</span>' : '') +
         (pendingT ? '<span><i class="key p"></i>today, so far</span>' : '')) +
       lineChart(w, {
-        target: mean(days.map(function (d) { return d.countable ? d.tdee : null; })),
         fmtY: function (v) { return nf(Math.round(v / 100) * 100); },
         points: days.map(function (d, i) {
-          return { x01: i / Math.max(1, days.length - 1), y: d.cal, flag: d.flagged, pending: d.inProgress,
-            label: fmtDay(d.date, { weekday: undefined, day: 'numeric', month: undefined }), tip: dayTip(d) };
+          return { x01: i / Math.max(1, days.length - 1), y: d.cal, tgt: d.countable ? d.tdee : null,
+            flag: d.flagged, pending: d.inProgress, date: d.date,
+            label: fmtDay(d.date, { weekday: undefined, day: 'numeric', month: undefined }),
+            labelFull: fmtDay(d.date, { weekday: undefined, day: 'numeric', month: 'short' }),
+            mkey: d.date.slice(0, 7), tip: dayTip(d) };
         })
       });
   });
@@ -1173,8 +1314,9 @@ function renderTrends() {
         fmtY: function (v) { return signed(Math.round(v / 50) * 50); },
         points: days.map(function (d, i) {
           var r = rollingDeficit(d.date, CFG.rollingWindowDays || 7);
-          return { x01: i / Math.max(1, days.length - 1), y: r.n >= 2 ? Math.round(r.avg) : null,
+          return { x01: i / Math.max(1, days.length - 1), y: r.n >= 2 ? Math.round(r.avg) : null, date: d.date,
             label: fmtDay(d.date, { weekday: undefined, day: 'numeric', month: undefined }),
+            labelFull: fmtDay(d.date, { weekday: undefined, day: 'numeric', month: 'short' }), mkey: d.date.slice(0, 7),
             tip: '<b>' + esc(fmtDay(d.date)) + '</b><br>' + (r.n >= 2
               ? signed(Math.round(r.avg)) + ' kcal/day<br><em>over ' + r.n + ' logged days</em>'
               : '<em>fewer than 2 logged days in window</em>') };
@@ -1187,17 +1329,18 @@ function scanTable() {
   var rows = M.scans.slice().reverse().map(function (s, i, arr) {
     var prev = arr[i + 1];
     var dw = prev && s.weight != null && prev.weight != null ? s.weight - prev.weight : null;
-    return '<tr><td>' + esc(fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short', year: 'numeric' })) + '</td>' +
+    return '<tr><td><span class="d-long">' + esc(fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short', year: 'numeric' })) + '</span>' +
+        '<span class="d-short">' + esc(fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' })) + '</span></td>' +
       '<td>' + nf(s.weight, 1) + '</td>' +
       '<td>' + nf(s.bf, 1) + '</td>' +
       '<td>' + nf(s.fatMass, 1) + '</td>' +
       '<td>' + nf(s.muscle, 1) + '</td>' +
-      '<td>' + nf(s.bmr) + '</td>' +
-      '<td>' + (dw == null ? '<span class="dash">—</span>' : signed(dw, 1)) + '</td></tr>';
+      '<td class="opt">' + nf(s.bmr) + '</td>' +
+      '<td class="opt">' + (dw == null ? '<span class="dash">—</span>' : signed(dw, 1)) + '</td></tr>';
   }).join('');
   return '<div class="sec"><div class="sec-head"><h2>Scan history</h2><span class="lbl">Baselines tab</span></div>' +
-    '<div class="tw"><table><thead><tr><th>Date</th><th>Weight kg</th><th>Body fat %</th><th>Fat mass kg</th>' +
-    '<th>Muscle kg</th><th>BMR</th><th>Δ weight</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    '<div class="tw"><table><thead><tr><th>Date</th><th>Weight kg</th><th>Fat %</th><th>Fat kg</th>' +
+    '<th>Muscle kg</th><th class="opt">BMR</th><th class="opt">Δ weight</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
 /* --- HISTORY ------------------------------------------------------------ */
@@ -1235,9 +1378,12 @@ function paintHistory() {
 }
 
 /* --- day detail --------------------------------------------------------- */
-var lastFocus = null;
+var lastFocus = null, closeTimer = null;
 function openDay(date) {
   var d = getDay(date), s = $('#daySheet');
+  // A close started just before this open would otherwise hide the new sheet.
+  clearTimeout(closeTimer);
+  tipOff();
   lastFocus = document.activeElement;
   var h = '<div class="sheet-top"><div><h2 id="dayTitle">' + esc(fmtDay(date, { weekday: 'long', day: 'numeric', month: 'long' })) + '</h2>' +
     '<span class="lbl">' + esc(relDay(date)) + (d.dayType ? ' · ' + d.dayType : '') + '</span></div>' +
@@ -1249,7 +1395,7 @@ function openDay(date) {
     h += '<div class="rows"><h3>Energy' + (d.inProgress ? ' · so far' : '') + '</h3>' +
       row('Calories', d.cal, 'kcal') +
       (d.inProgress
-        ? row('TDEE target', 'waiting on activity', '') + row('Deficit', 'waiting on activity', '')
+        ? row('TDEE target', 'day still open', '') + row('Deficit', 'day still open', '')
         : row('TDEE target', d.tdee, 'kcal') +
           row('Deficit', d.deficit, 'kcal', d.deficit != null && d.deficit < 0)) +
       row('BMR', d.bmr, 'kcal') +
@@ -1264,19 +1410,19 @@ function openDay(date) {
       row('Gym', gymLabel(d), '') +
       '</div>';
     if (d.fatState === 'over') {
-      h += '<div class="note warn"><span class="lbl">Fat over target</span>Over by ' + nf(d.fatOverBy) + 'g' +
+      h += '<div class="note warn"><span class="lbl">Fat over the limit</span>' + nf(d.fatOverBy) + ' g over the ' + nf(M.targets.fat_ceiling_g) + ' g limit' +
         (d.drivers.length ? ' — driven by: ' + esc(d.drivers.join(', ')) : '') + '.</div>';
     } else if (d.fatState === 'caution') {
-      h += '<div class="note caution"><span class="lbl">Fat above the ceiling</span>' + nf(d.fatOverBy) + 'g over, ' +
-        'still under the ' + nf(M.targets.fat_red_g) + 'g line' +
+      h += '<div class="note caution"><span class="lbl">Fat above the limit</span>' + nf(d.fatOverBy) + ' g over, ' +
+        'still under ' + nf(M.targets.fat_red_g) + ' g' +
         (d.drivers.length ? ' — from: ' + esc(d.drivers.join(', ')) : '') + '.</div>';
     }
     if (d.proteinWarn) {
-      h += '<div class="note warn"><span class="lbl">Protein under floor</span>' +
-        nf(M.targets.protein_floor_g - d.protein) + 'g short of the ' + nf(M.targets.protein_floor_g) + 'g floor.</div>';
+      h += '<div class="note warn"><span class="lbl">Protein short of target</span>' +
+        nf(M.targets.protein_floor_g - d.protein) + ' g short of the ' + nf(M.targets.protein_floor_g) + ' g target.</div>';
     } else if (d.proteinLow) {
       h += '<div class="note"><span class="lbl">Protein so far</span>' +
-        nf(M.targets.protein_floor_g - d.protein) + 'g to go to the ' + nf(M.targets.protein_floor_g) + 'g floor.</div>';
+        nf(M.targets.protein_floor_g - d.protein) + ' g to go to the ' + nf(M.targets.protein_floor_g) + ' g target.</div>';
     }
     if (d.notes) h += '<div class="note"><span class="lbl">Note</span>' + esc(d.notes) + '</div>';
   }
@@ -1293,7 +1439,8 @@ function row(label, v, unit, warn, caution) {
 function closeDay() {
   var s = $('#daySheet');
   s.classList.remove('on'); $('#scrim').classList.remove('on');
-  setTimeout(function () { s.hidden = true; }, 300);
+  clearTimeout(closeTimer);
+  closeTimer = setTimeout(function () { s.hidden = true; }, 300);
   if (lastFocus && lastFocus.focus) lastFocus.focus();
 }
 
@@ -1309,7 +1456,7 @@ function setSync(cls, text, showRefresh) {
 }
 
 function showLoading() {
-  $('#view-today').innerHTML = '<div class="skl h1"></div><div class="grid g2">' +
+  $('#view-' + current).innerHTML = '<div class="skl h1"></div><div class="grid g2">' +
     '<div class="cell"><div class="skl h2"></div></div><div class="cell"><div class="skl h2"></div></div></div>';
 }
 
@@ -1325,7 +1472,11 @@ function showSetup(reason) {
     '<label class="lbl" for="sid">Spreadsheet ID or full URL</label>' +
     '<input id="sid" type="text" spellcheck="false" placeholder="1AbC…xYz" value="' + esc(sheetId()) + '">' +
     '<button type="button" class="go" data-act="saveSheet">Connect</button>' +
-    '<p class="why">Saved in this browser only. To make it permanent for every device, set <code>sheetId</code> in <code>assets/config.js</code> and push.</p></div>';
+    '<p class="why">Saved in this browser only, and it takes priority over the default in <code>assets/config.js</code>.</p>' +
+    (savedSheet() && DEFAULT_SHEET
+      ? '<p class="why">This browser is using a saved sheet. <button type="button" data-act="resetSheet" style="text-decoration:underline">Go back to the default sheet</button></p>'
+      : '') + '</div>';
+  current = 'today'; markNav();
   VIEWS.forEach(function (v) { $('#view-' + v.id).classList.toggle('on', v.id === 'today'); });
   var i = $('#sid'); if (i) i.focus();
 }
@@ -1374,11 +1525,11 @@ function load() {
 
     charts.length = 0;
     renderToday(); renderWeek(); renderTrends(); renderHistory();
-    go(current);
+    go(current, true);
 
     lastLoad = Date.now();
     var t = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date());
-    setSync('', 'Live · ' + t + ' SGT', true);
+    setSync('', 'Updated ' + t + ' SGT', true);
     $('#railStamp').textContent = M.dates.length + ' day' + (M.dates.length === 1 ? '' : 's') + ' logged';
     loading = false;
   }).catch(function (e) {
@@ -1398,14 +1549,17 @@ document.addEventListener('click', function (e) {
   switch (t.dataset.act) {
     case 'refresh': return load();
     case 'closeDay': return closeDay();
+    case 'theme': return cycleTheme();
     case 'reconfigure': return showSetup('Currently reading: ' + (sheetId() || 'nothing') + '.');
+    case 'resetSheet':
+      try { localStorage.removeItem(LS_KEY); } catch (err) {}
+      return load();
     case 'saveSheet': {
       var raw = ($('#sid').value || '').trim();
       var m = raw.match(/\/d\/([a-zA-Z0-9-_]+)/);
       var id = m ? m[1] : raw;
       if (!id) return;
       try { localStorage.setItem(LS_KEY, id); } catch (err) {}
-      CFG.sheetId = id;
       return load();
     }
   }
@@ -1424,11 +1578,25 @@ document.addEventListener('visibilitychange', function () {
   if (!document.hidden && Date.now() - lastLoad > 60000 && sheetId()) load();
 });
 
+// Once a minute while the tab is visible: re-read the Sheet if the date has
+// rolled over at midnight or the refresh interval has passed (the phone pushes
+// activity hourly), and re-check the Night theme schedule.
+setInterval(function () {
+  applyTheme();
+  if (document.hidden || loading || !sheetId() || !lastLoad) return;
+  var every = (CFG.autoRefreshMinutes || 0) * 60000;
+  if (todayYMD() !== M.today || (every && Date.now() - lastLoad > every)) load();
+}, 60000);
+
 /* --- boot --------------------------------------------------------------- */
+applyTheme();
 buildNav();
-current = (location.hash.slice(1) || 'today');
-if (!VIEWS.some(function (v) { return v.id === current; })) current = 'today';
-markNav();
+var startView = location.hash.slice(1) || 'today';
+if (!VIEWS.some(function (v) { return v.id === startView; })) startView = 'today';
+// Show the requested view straight away, so a link to #trends does not show
+// Today's loading placeholder under a nav that says Trends.
+current = null;
+go(startView, true);
 load();
 
 })();

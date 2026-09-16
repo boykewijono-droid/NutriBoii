@@ -28,6 +28,23 @@
   --flag:#B03E26;          /* 4.65:1 on ground */
   --amber:#875C10;         /* fat between ceiling and red line, 4.64:1 */
 
+  /* The hero slab is dark in BOTH themes, so it has its own small set. */
+  --slab-bg:#16150F;
+  --slab-fg:#F4F1E8;
+  --slab-dim:#A8A292;      /* 7.2:1 on the light-theme slab */
+  --slab-line:rgba(244,241,232,.14);
+  --slab-good:#B4D336;
+  --slab-bad:#E8836B;
+  --slab-amber:#E0B25A;
+
+  /* tints that used to be hard-coded rgba() literals */
+  --hover:rgba(22,21,15,.05);
+  --scrim:rgba(22,21,15,.4);
+  --today-tint:rgba(115,137,38,.08);
+  --band-good:rgba(115,137,38,.2);
+  --band-amber:rgba(135,92,16,.16);
+  --tab-fg:rgba(244,241,232,.62);
+
   --rail:216px;
   --pad:clamp(18px,4vw,40px);
 
@@ -35,6 +52,41 @@
   --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
 
   --ease:cubic-bezier(.22,.61,.36,1);
+  color-scheme:light;
+}
+
+/* ============================  dark / night  ============================
+   Set by app.js (and a tiny script in <head>, so there is no light flash
+   before it runs). Every text token again clears AA on all three grounds. */
+:root[data-theme="dark"]{
+  --ground:#121210;
+  --paper:#1A1916;
+  --paper-2:#211F1B;
+  --ink:#EDE9DF;
+  --ink-2:#D8D3C8;
+  --ink-70:#B8B5AB;
+  --ink-45:#A8A59B;        /* 5.5:1 even on the tinted today row */
+  --ink-25:#5C584F;        /* strokes only */
+  --ink-dim:#97948E;       /* 4.6:1 on the worst case: the tinted today row */
+  --line:#33312B;
+  --line-soft:#292722;
+  --accent:#B4D336;
+  --accent-dim:#7F9C2A;
+  --good:#A9C64A;
+  --flag:#E0806A;
+  --amber:#D2A451;
+
+  --slab-bg:#26241F;       /* lifted off the ground so the hero still reads as the hero */
+  --slab-fg:#F4F1E8;
+  --slab-dim:#A8A292;      /* 6.1:1 */
+  --slab-line:rgba(244,241,232,.12);
+
+  --hover:rgba(244,241,232,.06);
+  --scrim:rgba(0,0,0,.6);
+  --today-tint:rgba(180,211,54,.08);
+  --band-good:rgba(180,211,54,.18);
+  --band-amber:rgba(210,164,81,.2);
+  color-scheme:dark;
 }
 
 *,*::before,*::after{box-sizing:border-box}
@@ -49,13 +101,14 @@ h1,h2,h3{font-family:var(--f-display);font-weight:600;margin:0;letter-spacing:-.
 a{color:inherit}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 svg{display:block}
-::selection{background:var(--accent);color:var(--ink)}
+::selection{background:var(--accent);color:#16150F}
 
 /* label: used sparingly, not as an eyebrow over every heading */
 .lbl{
   font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink-45);font-weight:500;
 }
+.lbl .nc{text-transform:none}   /* keeps "150 g" from shouting as "150 G" */
 
 /* ==========================  shell  ====================================== */
 .shell{display:flex;min-height:100vh}
@@ -101,6 +154,11 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .sync.stale .dot{background:var(--ink-25)}
 .sync.err .dot{background:var(--flag)}
 .sync button{text-decoration:underline;text-underline-offset:2px;font-size:10.5px}
+.top-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.theme-btn{font-size:10.5px;color:var(--ink-45);display:flex;align-items:center;gap:6px;padding:2px 0}
+.theme-btn:hover{color:var(--ink)}
+.theme-btn i{font-style:normal;width:10px;height:10px;border-radius:50%;border:1.5px solid currentColor;
+  display:inline-block;background:linear-gradient(90deg,currentColor 50%,transparent 50%)}
 
 .view{display:none}
 .view.on{display:block;animation:rise .3s var(--ease)}
@@ -110,18 +168,18 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
    The one memorable element. Everything else stays quiet around it.
    ========================================================================= */
 .slab{
-  background:var(--ink);color:var(--paper);
+  background:var(--slab-bg);color:var(--slab-fg);
   padding:clamp(24px,3.4vw,38px);position:relative;overflow:hidden;
 }
 .slab.void{padding-block:clamp(34px,5vw,56px)}
 .slab-top{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap}
-.slab .lbl{color:var(--ink-25)}
+.slab .lbl{color:var(--slab-dim)}
 .chip{
   font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
-  border:1px solid rgba(244,241,232,.26);padding:3px 9px;color:var(--paper);
+  border:1px solid rgba(244,241,232,.26);padding:3px 9px;color:var(--slab-fg);
 }
 .chip.Treat{border-color:var(--accent);color:var(--accent)}
-.chip.Gym{border-color:var(--paper);font-weight:500}
+.chip.Gym{border-color:var(--slab-fg);font-weight:500}
 
 .figs{display:flex;gap:clamp(28px,6vw,76px);flex-wrap:wrap;margin:24px 0 6px}
 .fig{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -130,20 +188,36 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
   font-size:clamp(52px,10.5vw,92px);line-height:.86;letter-spacing:-.035em;
   font-variation-settings:"opsz" 144;
 }
-.fig .u{font-family:var(--f-mono);font-size:.2em;letter-spacing:.04em;color:var(--ink-25);
+.fig .u{font-family:var(--f-mono);font-size:.2em;letter-spacing:.04em;color:var(--slab-dim);
   margin-left:.62em;display:inline-block}
-.fig small{font-size:11.5px;color:var(--ink-25)}
-.fig.lead b{color:var(--paper)}
-.fig.good b{color:var(--accent)}
-.fig.bad b{color:#E8836B}
+.fig small{font-size:11.5px;color:var(--slab-dim)}
+.fig.lead b{color:var(--slab-fg)}
+.fig.good b{color:var(--slab-good)}
+.fig.bad b{color:var(--slab-bad)}
 
 /* energy line: consumed vs target */
 .energy{margin-top:26px}
-.energy-track{height:5px;background:rgba(244,241,232,.14);position:relative;overflow:hidden}
-.energy-fill{position:absolute;inset:0 auto 0 0;background:var(--paper);transition:width .7s var(--ease)}
-.energy-fill.over{background:#E8836B}
-.energy-marks{display:flex;justify-content:space-between;margin-top:8px;font-size:10.5px;color:var(--ink-25)}
-.energy-note{margin-top:14px;font-size:11.5px;line-height:1.55;color:var(--ink-25);max-width:62ch}
+.energy-track{height:5px;background:var(--slab-line);position:relative;overflow:hidden}
+.energy-fill{position:absolute;inset:0 auto 0 0;background:var(--slab-fg);transition:width .7s var(--ease)}
+.energy-fill.over{background:var(--slab-bad)}
+.energy-marks{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:10.5px;color:var(--slab-dim)}
+.energy-note{margin-top:14px;font-size:11.5px;line-height:1.55;color:var(--slab-dim);max-width:62ch}
+
+/* protein and fat at a glance, in plain words: no "floor" or "ceiling" */
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(18px,4vw,48px);
+  margin-top:24px;padding-top:20px;border-top:1px solid var(--slab-line)}
+.stat .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--slab-dim);font-weight:500}
+.stat .v{display:block;font-family:var(--f-display);font-weight:500;letter-spacing:-.02em;line-height:1;
+  font-size:clamp(30px,4.6vw,42px);margin-top:8px;color:var(--slab-fg)}
+.stat .v .u{font-family:var(--f-mono);font-size:.32em;letter-spacing:.04em;color:var(--slab-dim);margin-left:.5em}
+.stat .mini{height:4px;background:var(--slab-line);margin-top:12px;position:relative;overflow:hidden}
+.stat .mini i{position:absolute;inset:0 auto 0 0;background:var(--slab-fg)}
+.stat .mini s{position:absolute;top:0;bottom:0;width:2px;background:var(--slab-dim);text-decoration:none}
+.stat .bal{display:block;font-size:12px;line-height:1.45;margin-top:9px;color:var(--slab-fg)}
+.stat.good .bal{color:var(--slab-good)}  .stat.good .mini i{background:var(--slab-good)}
+.stat.bad .v,.stat.bad .bal{color:var(--slab-bad)}  .stat.bad .mini i{background:var(--slab-bad)}
+.stat.caution .v,.stat.caution .bal{color:var(--slab-amber)}  .stat.caution .mini i{background:var(--slab-amber)}
+.stat.pend .bal{color:var(--slab-dim)}
 
 /* ==========================  quiet blocks  =============================== */
 .grid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:1px}
@@ -187,8 +261,8 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .macro.ok .fill{background:var(--accent-dim)}
 .macro.pend .fill{background:var(--ink-45)}
 .notch{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--ink-70)}
-.band{position:absolute;top:0;bottom:0;background:rgba(115,137,38,.2)}
-.band.amber{background:rgba(135,92,16,.16)}
+.band{position:absolute;top:0;bottom:0;background:var(--band-good)}
+.band.amber{background:var(--band-amber)}
 .notch.red{background:var(--flag)}
 .macro-note{
   margin-top:10px;font-size:11px;color:var(--flag);
@@ -212,6 +286,8 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .key.a{background:var(--accent-dim);height:8px;width:8px}
 .key.f{background:var(--flag);height:8px;width:8px}
 .key.p{width:9px;height:9px;border-radius:50%;background:transparent;border:1.5px dashed var(--ink-45)}
+.key.fd{width:8px;height:8px;border-radius:50%;background:var(--flag)}
+.caret{fill:var(--ink-45)}
 .chart svg{width:100%;height:auto;overflow:visible}
 .ax{font-family:var(--f-mono);font-size:9.5px;fill:var(--ink-45)}
 .ax.dim{fill:var(--ink-dim)}
@@ -226,8 +302,9 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .bar{fill:var(--ink)}
 .bar.pos{fill:var(--accent-dim)}
 .bar.neg{fill:var(--flag)}
-.hl-col{fill:rgba(22,21,15,.05);opacity:0;pointer-events:none;transition:opacity .12s}
-.hit{fill:transparent;cursor:pointer}
+.hl-col{fill:var(--hover);opacity:0;pointer-events:none;transition:opacity .12s}
+.hit{fill:transparent}
+.hit[data-day]{cursor:pointer}
 .hit:hover + .hl-col,.hit:focus-visible + .hl-col{opacity:1}
 .miss{fill:none;stroke:var(--ink-25);stroke-width:1.5;stroke-dasharray:2 2.5}
 /* today, still being logged: dashed lead-in and a hollow dashed point, so a
@@ -236,15 +313,15 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .pt.p{fill:var(--paper);stroke:var(--ink-45);stroke-width:1.5;stroke-dasharray:2 1.6}
 
 .tip{
-  position:fixed;z-index:60;background:var(--ink);color:var(--paper);
+  position:fixed;z-index:60;background:var(--slab-bg);color:var(--slab-fg);
   padding:9px 12px;font-size:11px;line-height:1.6;pointer-events:none;
   opacity:0;transition:opacity .12s;max-width:230px;
 }
 .tip.on{opacity:1}
 .tip b{font-family:var(--f-display);font-size:14px;font-weight:500}
-.tip em{font-style:normal;color:var(--ink-25)}
-.tip .w{color:#E8836B}
-.tip .c{color:#D9AE55}
+.tip em{font-style:normal;color:var(--slab-dim)}
+.tip .w{color:var(--slab-bad)}
+.tip .c{color:var(--slab-amber)}
 
 /* ==========================  tables  ===================================== */
 .tw{overflow-x:auto;border:1px solid var(--line);background:var(--paper)}
@@ -260,7 +337,7 @@ tbody tr:last-child td{border-bottom:0}
 tbody tr{transition:background .12s}
 tbody tr.day{cursor:pointer}
 tbody tr.day:hover{background:var(--paper-2)}
-tbody tr.today td{background:rgba(115,137,38,.08)}
+tbody tr.today td{background:var(--today-tint)}
 tbody tr.void td{color:var(--ink-dim)}
 tbody tr.void td:first-child{color:var(--ink-45)}
 td.warn{color:var(--flag)}
@@ -272,6 +349,7 @@ td b{font-weight:500}
 .dt.Busy{border-color:var(--ink-25)}
 .dt.Rest{border-color:var(--line);color:var(--ink-45)}
 .dash{color:var(--ink-dim)}
+.d-short{display:none}
 
 /* ==========================  filters  ==================================== */
 .filters{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
@@ -284,7 +362,7 @@ td b{font-weight:500}
 .filters button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 
 /* ==========================  day detail  ================================= */
-.scrim{position:fixed;inset:0;background:rgba(22,21,15,.4);z-index:80;opacity:0;pointer-events:none;transition:opacity .22s}
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:80;opacity:0;pointer-events:none;transition:opacity .22s}
 .scrim.on{opacity:1;pointer-events:auto}
 .sheet{
   position:fixed;z-index:81;background:var(--paper);
@@ -354,20 +432,31 @@ td b{font-weight:500}
   .tabbar{
     display:grid;grid-template-columns:repeat(4,1fr);
     position:fixed;left:0;right:0;bottom:0;z-index:50;
-    background:var(--ink);padding-bottom:env(safe-area-inset-bottom,0);
+    background:var(--slab-bg);padding-bottom:env(safe-area-inset-bottom,0);
   }
   .tabbar button{
     padding:13px 4px 14px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
-    color:rgba(244,241,232,.62);position:relative;
+    color:var(--tab-fg);position:relative;
   }
-  .tabbar button[aria-current="true"]{color:var(--paper)}
+  .tabbar button[aria-current="true"]{color:var(--slab-fg)}
   .tabbar button[aria-current="true"]::before{
     content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:22px;height:2px;background:var(--accent);
   }
 }
+/* Phones: the day and scan tables fit the screen instead of scrolling sideways.
+   Less important columns drop out and dates shorten. */
+@media (max-width:600px){
+  table{min-width:0}
+  th,td{padding:10px 7px}
+  th:first-child,td:first-child{padding-left:12px}
+  th:last-child,td:last-child{padding-right:12px}
+  .opt{display:none}
+  .d-long{display:none}
+  .d-short{display:inline}
+}
 @media (max-width:460px){
   .g2,.g3,.g4{grid-template-columns:1fr}
-  table{min-width:520px}
+  .stats{gap:16px}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}

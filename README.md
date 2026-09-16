@@ -3,6 +3,12 @@
 A nutrition and body-composition dashboard that reads a Google Sheet live.
 Static HTML on GitHub Pages, no backend, no build step, no scheduled job.
 
+**Activity sync from Samsung Health, hourly: [SYNC.md](SYNC.md)**
+
+**Night mode:** the button beside *Refresh* cycles **Auto** (follows your
+phone) → **Light** → **Dark** → **Night** (dark from 7pm to 7am Singapore
+time).
+
 **Setup: [SETUP.md](SETUP.md)** — the Sheet and the repo already exist, so
 what is left is about five minutes.
 
@@ -117,13 +123,14 @@ chart, a dotted bridge across the line, "No data logged" in the table. It never
 drops to zero, and it never silently closes up so a week with a hole looks
 continuous.
 
-**Today isn't finished until activity is in.** Food is logged meal by meal and
-the Samsung Health numbers arrive at night, so until `ActiveCal` is logged both
-halves of today's deficit are partial. Until then the Today view shows intake
-and protein *so far* and holds back the deficit, today stays out of the 7-day
-average and the Week averages, and low protein reads as "g to go" rather than
-a warning. Fat stays live all day, because it only ever goes up. Once activity
-is logged, or the day ends, it becomes a normal day.
+**Today stays open until you close it.** Food arrives meal by meal and, with
+the phone sync running, activity arrives every hour, so neither means the day
+is done. The close is the day type, which Claude logs once with your final
+totals. Until then the Today view shows what you've eaten, an estimate of what
+you've burned *so far*, and protein and fat with their balance, but no final
+deficit. Today stays out of the 7-day and Week averages, and low protein reads
+"g to go" rather than a warning. Fat stays live all day, because it only ever
+goes up. Once the day type is logged, or midnight passes, it's a normal day.
 
 ---
 
