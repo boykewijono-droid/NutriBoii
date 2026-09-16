@@ -83,8 +83,15 @@ Your URL appears within a minute or two:
 https://boykewijono-droid.github.io/NutriBoii/
 ```
 
-Open it on your phone → Share → **Add to Home Screen**. It gets its own icon
-and opens without browser chrome.
+**On Android (Chrome):** open the URL → ⋮ menu → **Add to home screen** (or
+**Install app** if Chrome offers it). It gets the NutriBoii icon and opens
+full-screen, without the browser bar.
+
+**On iPhone (Safari):** Share → **Add to Home Screen**.
+
+If you added it before the web app manifest existed, remove that shortcut and
+add it again — an old shortcut keeps the generic icon and opens as a normal
+browser tab.
 
 A private repo works too — GitHub Pages on private repos requires a paid plan;
 on the free plan make the repo public. The repo holds no personal data either
