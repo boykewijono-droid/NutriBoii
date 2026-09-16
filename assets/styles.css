@@ -4,6 +4,11 @@
    one acid-lime accent reserved for the hero + positive energy, one brick
    red reserved exclusively for warning states (fat over / protein under).
    Rule: --accent never carries small text on a light ground.
+
+   Contrast: every TEXT token below clears WCAG AA (4.5:1) against all three
+   light grounds (ground, paper, paper-2) — checked, not eyeballed. --ink-25
+   and --accent-dim are for strokes, fills and the dark slab only; quiet text
+   on a light ground uses --ink-dim, green text uses --good.
    ========================================================================== */
 :root{
   --ground:#E9E4D8;
@@ -12,14 +17,16 @@
   --ink:#16150F;
   --ink-2:#2A2820;
   --ink-70:#4A4639;
-  --ink-45:#7C7768;
-  --ink-25:#A8A292;
+  --ink-45:#5D594E;        /* secondary text   5.5:1 on ground */
+  --ink-25:#A8A292;        /* strokes + dark-slab text ONLY, 2.3:1 on paper */
+  --ink-dim:#68645B;       /* quiet text on light  4.65:1 on ground */
   --line:#D6CFBE;
   --line-soft:#E0DACB;
   --accent:#B4D336;
-  --accent-dim:#7E962A;
-  --flag:#C0442A;
-  --amber:#9B6A12;        /* fat between the ceiling and the red line */
+  --accent-dim:#738926;    /* green fills + bars   3.1:1, graphics minimum */
+  --good:#5A6B1E;          /* green TEXT           4.65:1 on ground */
+  --flag:#B03E26;          /* 4.65:1 on ground */
+  --amber:#875C10;         /* fat between ceiling and red line, 4.64:1 */
 
   --rail:216px;
   --pad:clamp(18px,4vw,40px);
@@ -69,16 +76,16 @@ svg{display:block}
   padding:9px 24px;text-align:left;color:var(--ink-45);
   font-size:13px;position:relative;transition:color .18s var(--ease);
 }
-.nav button i{font-style:normal;font-size:10px;color:var(--ink-25);width:12px}
+.nav button i{font-style:normal;font-size:10px;color:var(--ink-dim);width:12px}
 .nav button:hover{color:var(--ink-70)}
 .nav button[aria-current="true"]{color:var(--ink);font-weight:500}
 .nav button[aria-current="true"]::before{
   content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
   width:3px;height:15px;background:var(--ink);
 }
-.nav button[aria-current="true"] i{color:var(--accent-dim)}
+.nav button[aria-current="true"] i{color:var(--good)}
 
-.rail-foot{margin-top:auto;padding:0 24px;font-size:10.5px;color:var(--ink-25);line-height:1.5}
+.rail-foot{margin-top:auto;padding:0 24px;font-size:10.5px;color:var(--ink-dim);line-height:1.5}
 .rail-foot button{text-decoration:underline;text-underline-offset:2px;color:var(--ink-45);font-size:10.5px}
 
 main{flex:1;min-width:0;padding:0 var(--pad) 96px}
@@ -136,6 +143,7 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .energy-fill{position:absolute;inset:0 auto 0 0;background:var(--paper);transition:width .7s var(--ease)}
 .energy-fill.over{background:#E8836B}
 .energy-marks{display:flex;justify-content:space-between;margin-top:8px;font-size:10.5px;color:var(--ink-25)}
+.energy-note{margin-top:14px;font-size:11.5px;line-height:1.55;color:var(--ink-25);max-width:62ch}
 
 /* ==========================  quiet blocks  =============================== */
 .grid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:1px}
@@ -152,9 +160,9 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
   margin-left:.6em;letter-spacing:.03em;display:inline-block}
 .cell .sub{font-size:11px;color:var(--ink-45);margin-top:8px;line-height:1.45}
 .cell.hl{background:var(--paper-2)}
-.cell .big.good{color:var(--accent-dim)}
+.cell .big.good{color:var(--good)}
 .cell .big.bad{color:var(--flag)}
-.cell .big.none{color:var(--ink-25)}
+.cell .big.none{color:var(--ink-dim)}
 
 .sec{margin-top:44px}
 .sec-head{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin-bottom:16px;flex-wrap:wrap}
@@ -177,9 +185,10 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .macro.warn .fill{background:var(--flag)}
 .macro.caution .fill{background:var(--amber)}
 .macro.ok .fill{background:var(--accent-dim)}
+.macro.pend .fill{background:var(--ink-45)}
 .notch{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--ink-70)}
-.band{position:absolute;top:0;bottom:0;background:rgba(126,150,42,.2)}
-.band.amber{background:rgba(155,106,18,.16)}
+.band{position:absolute;top:0;bottom:0;background:rgba(115,137,38,.2)}
+.band.amber{background:rgba(135,92,16,.16)}
 .notch.red{background:var(--flag)}
 .macro-note{
   margin-top:10px;font-size:11px;color:var(--flag);
@@ -202,9 +211,10 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .key.g{background:transparent;height:0;border-top:1px dotted var(--ink-25)}
 .key.a{background:var(--accent-dim);height:8px;width:8px}
 .key.f{background:var(--flag);height:8px;width:8px}
+.key.p{width:9px;height:9px;border-radius:50%;background:transparent;border:1.5px dashed var(--ink-45)}
 .chart svg{width:100%;height:auto;overflow:visible}
 .ax{font-family:var(--f-mono);font-size:9.5px;fill:var(--ink-45)}
-.ax.dim{fill:var(--ink-25)}
+.ax.dim{fill:var(--ink-dim)}
 .axline{stroke:var(--line);stroke-width:1}
 .gridline{stroke:var(--line-soft);stroke-width:1}
 .tgt{stroke:var(--ink-25);stroke-width:1;stroke-dasharray:3 3;fill:none}
@@ -220,6 +230,10 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .hit{fill:transparent;cursor:pointer}
 .hit:hover + .hl-col,.hit:focus-visible + .hl-col{opacity:1}
 .miss{fill:none;stroke:var(--ink-25);stroke-width:1.5;stroke-dasharray:2 2.5}
+/* today, still being logged: dashed lead-in and a hollow dashed point, so a
+   half-eaten day never reads as a real low-intake day */
+.ser-pend{fill:none;stroke:var(--ink-45);stroke-width:1.5;stroke-dasharray:3 3}
+.pt.p{fill:var(--paper);stroke:var(--ink-45);stroke-width:1.5;stroke-dasharray:2 1.6}
 
 .tip{
   position:fixed;z-index:60;background:var(--ink);color:var(--paper);
@@ -246,18 +260,18 @@ tbody tr:last-child td{border-bottom:0}
 tbody tr{transition:background .12s}
 tbody tr.day{cursor:pointer}
 tbody tr.day:hover{background:var(--paper-2)}
-tbody tr.today td{background:rgba(126,150,42,.08)}
-tbody tr.void td{color:var(--ink-25)}
+tbody tr.today td{background:rgba(115,137,38,.08)}
+tbody tr.void td{color:var(--ink-dim)}
 tbody tr.void td:first-child{color:var(--ink-45)}
 td.warn{color:var(--flag)}
 td.caution{color:var(--amber)}
 td b{font-weight:500}
 .dt{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--line);color:var(--ink-70)}
 .dt.Gym{border-color:var(--ink);color:var(--ink);font-weight:500}
-.dt.Treat{border-color:var(--accent-dim);color:var(--accent-dim)}
+.dt.Treat{border-color:var(--good);color:var(--good)}
 .dt.Busy{border-color:var(--ink-25)}
 .dt.Rest{border-color:var(--line);color:var(--ink-45)}
-.dash{color:var(--ink-25)}
+.dash{color:var(--ink-dim)}
 
 /* ==========================  filters  ==================================== */
 .filters{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
@@ -291,7 +305,7 @@ td b{font-weight:500}
 .row b{font-weight:500;text-align:right}
 .row b.warn{color:var(--flag)}
 .row b.caution{color:var(--amber)}
-.row b.dash{color:var(--ink-25);font-weight:400}
+.row b.dash{color:var(--ink-dim);font-weight:400}
 .note{margin-top:20px;padding:15px 17px;background:var(--paper-2);border-left:2px solid var(--ink-25);font-size:12px;line-height:1.65;color:var(--ink-70)}
 .note.warn{border-left-color:var(--flag)}
 .note.caution{border-left-color:var(--amber)}
@@ -344,7 +358,7 @@ td b{font-weight:500}
   }
   .tabbar button{
     padding:13px 4px 14px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
-    color:rgba(244,241,232,.45);position:relative;
+    color:rgba(244,241,232,.62);position:relative;
   }
   .tabbar button[aria-current="true"]{color:var(--paper)}
   .tabbar button[aria-current="true"]::before{

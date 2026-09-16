@@ -98,7 +98,7 @@ and rolling deficit over 30 days; the scan history table.
 **History** — every calendar day since the first entry, filterable by day type
 or by flagged-only. Any day opens to its full row.
 
-### The three things it is opinionated about
+### The four things it is opinionated about
 
 **The goal, not just the day.** The point is 15% body fat, so the projection
 sits on the Today view next to the calories, not buried in a tab. It fits a
@@ -116,6 +116,14 @@ rows are matched onto it. A day you didn't log is a gap: a dashed tick on the
 chart, a dotted bridge across the line, "No data logged" in the table. It never
 drops to zero, and it never silently closes up so a week with a hole looks
 continuous.
+
+**Today isn't finished until activity is in.** Food is logged meal by meal and
+the Samsung Health numbers arrive at night, so until `ActiveCal` is logged both
+halves of today's deficit are partial. Until then the Today view shows intake
+and protein *so far* and holds back the deficit, today stays out of the 7-day
+average and the Week averages, and low protein reads as "g to go" rather than
+a warning. Fat stays live all day, because it only ever goes up. Once activity
+is logged, or the day ends, it becomes a normal day.
 
 ---
 
