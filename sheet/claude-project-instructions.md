@@ -44,6 +44,11 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
    blank, the dashboard simply shows no day-type chip, and nothing else is
    affected. Ask him once if it is not obvious, but never hold up a log
    waiting for it — write the row and add the type later.
+
+   **Setting `dayType` closes the day on the dashboard.** Until it is set,
+   today shows as "so far": no final deficit, and it stays out of the 7-day
+   average. So set it only with the day's final totals, never on an earlier
+   meal. Activity syncing in through the day does not close it.
    - `Rest` — low activity, working from home, no gym
    - `Busy` — office or otherwise moderately active
    - `Gym` — trained that day; put the split in `GymDay`
@@ -77,10 +82,14 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
 
 The `Targets` tab is authoritative. At the time of writing:
 
-- Protein floor **150 g**, target band 150–160 g. Under 150 shows red.
-- Fat **70 g** ceiling, **80 g** red line. 70–80 g shows amber as a heads-up;
+- Protein **target 150 g** (the good range is 150–160 g). Under 150 g shows red.
+- Fat **limit 70 g**, red over **80 g**. 70–80 g shows amber as a heads-up;
   above 80 g shows red. A single hard line made 72 g look as bad as 118 g,
   so the band exists to keep the red meaningful.
+
+When you talk to him, say it the way the dashboard does: "12 g short of your
+150 g target", "8 g over your 70 g limit". Avoid "floor" and "ceiling"; they
+mean nothing to someone who hasn't read this.
 - Body fat goal **15%**.
 
 ## Notes — the field that does real work
@@ -108,9 +117,13 @@ it. Otherwise keep `Notes` short and factual.
   be added later and nothing else depends on it.
 - **Do not ask on a first meal.** Early in the day you cannot know the type
   yet. Log what he ate and leave `dayType` and `gymDay` out entirely.
-- **Ask rather than guess.** Steps, active calories and exercise calories come
-  off Samsung Health; he will read them to you. If he doesn't mention them,
-  ask once, then leave them blank rather than inventing numbers.
+- **Activity may already be there.** His phone pushes steps and exercise
+  calories into the sheet every hour (and active calories, if his phone shares
+  them). Before asking for Samsung Health numbers, read today back with
+  `action=get` and ask only for what is still blank, usually just active
+  calories, once, at the end of the day. Never send `steps`, `activeCal` or
+  `exerciseCal` that you estimated yourself: a synced value is better than a
+  guess, and a guess would overwrite it. If he reads you a number, use his.
 - **Estimating portions is expected.** State the assumption instead of implying
   precision you don't have: "assuming ~150 g chicken thigh" is better than a
   confident 47 g of fat.

@@ -40,6 +40,11 @@
  *
  *   Read a day back:   <URL>?token=T&action=get&date=2026-09-12
  *
+ *   Activity from the phone (Health Connect Webhook app, POST, JSON body):
+ *     <URL>?token=T&action=sync
+ *     Steps, active calories and exercise calories are rebuilt per day from
+ *     the records received. See SYNC.md for the phone-side setup.
+ *
  *   Delete a row (confirm=yes is required):
  *     <URL>?token=T&action=delete&date=2026-09-12&confirm=yes
  *     add &tab=baselines to delete a scan instead of a daily row
@@ -105,7 +110,8 @@ function handle(e, verb) {
     else if (action === 'scan') out = addScan(p);
     else if (action === 'get')  out = getDay(p);
     else if (action === 'delete') out = deleteDay(p);
-    else throw new Error('Unknown action "' + action + '". Use log, scan, get, delete or ping.');
+    else if (action === 'sync') out = hsSync(e);
+    else throw new Error('Unknown action "' + action + '". Use log, scan, get, delete, sync or ping.');
 
     return asHtml ? htmlReply(out) : jsonReply(out);
   } catch (err) {
@@ -260,6 +266,214 @@ function deleteDay(p) {
     return { ok: true, action: 'delete', date: date, deleted: true,
              summary: 'Deleted ' + date + ' from ' + sh.getName() + '.' };
   } finally { lock.releaseLock(); }
+}
+
+/* ===================================================================== */
+/* ACTIVITY SYNC, pushed from the phone
+ *
+ * Samsung Health (or Health Sync) -> Health Connect -> the "Health Connect
+ * Webhook" Android app -> POST <URL>?token=T&action=sync, JSON body.
+ *
+ * The app sends only records NEW since its last sync, from a rolling 48-hour
+ * window, so one payload is never a day's total. Every record is kept in a
+ * hidden raw tab, keyed by its Health Connect record id, and each day's totals
+ * are rebuilt from everything stored for that date. A record that Samsung
+ * keeps updating through the day (its single daily step count) keeps the same
+ * id, so it is replaced rather than added again.
+ *
+ * Two apps can both write steps into Health Connect, Samsung Health and Health
+ * Sync for example. Summing them would double the count, so for each date and
+ * data type only the ONE origin with the largest total is used.
+ *
+ * ExerciseCal is total calories burned INSIDE exercise sessions, pro rata by
+ * overlap, so an all-day calorie stream is never counted as exercise.
+ * ActiveCal is written only when active-calorie records actually arrive:
+ * Samsung Health does not share its all-day activity calories with Health
+ * Connect, and a value that never arrived must stay blank, not become 0.
+ *
+ * Names are hs-prefixed: every .gs file in the project shares one scope.
+ */
+var HS_TAB = 'Activity Sync';
+var HS_HEAD = ['Key', 'Type', 'Origin', 'Start', 'End', 'Value', 'Date', 'Received'];
+var HS_KEEP_DAYS = 5;
+
+function hsSync(e) {
+  var body;
+  try { body = JSON.parse((e && e.postData && e.postData.contents) || ''); }
+  catch (err) { throw new Error('sync expects the JSON body sent by the Health Connect Webhook app.'); }
+  if (!body || typeof body !== 'object') throw new Error('sync expects a JSON object body.');
+
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
+  try {
+    var incoming = hsRecords(body);
+    var raw = hsRawSheet();
+    var store = hsLoad(raw);
+    var now = new Date().toISOString();
+    var touched = {};
+    incoming.forEach(function (r) {
+      r.received = now;
+      store[r.key] = r;
+      touched[r.date] = 1;
+    });
+
+    var cutoff = hsShift(todaySGT(), -HS_KEEP_DAYS);
+    var sh = mustGet(DAILY);
+    var days = {};
+    Object.keys(touched).sort().forEach(function (date) {
+      if (date < cutoff) return;       // older than the window worth rebuilding
+      var t = hsRollup(store, date);
+      var p = {};
+      if (t.steps != null) p.steps = t.steps;
+      if (t.activeCal != null) p.activecal = t.activeCal;
+      if (t.exerciseCal != null) p.exercisecal = t.exerciseCal;
+      if (!Object.keys(p).length) return;
+      var res = upsert(sh, DAILY_MAP, 14, date, p);
+      if (res.created) {
+        var bmr = latestScanBmr();
+        if (bmr != null) sh.getRange(res.row, 10).setValue(bmr);
+      }
+      writeDerived(sh, findRow(sh, date));
+      days[date] = t;
+    });
+    sortByDate(sh);
+
+    // Keep the raw tab small. Anything older than a few days has already been
+    // rolled up into the Daily Log.
+    Object.keys(store).forEach(function (k) { if (store[k].date < cutoff) delete store[k]; });
+    hsSave(raw, store);
+
+    var updated = Object.keys(days);
+    return {
+      ok: true, action: 'sync', received: incoming.length,
+      stored: Object.keys(store).length, days: days,
+      summary: incoming.length + ' record' + (incoming.length === 1 ? '' : 's') + ' received; ' +
+               (updated.length ? 'updated ' + updated.join(', ') : 'no daily totals changed')
+    };
+  } finally { lock.releaseLock(); }
+}
+
+/** Flatten the webhook payload into one list of records. */
+function hsRecords(body) {
+  var out = [];
+  function add(type, list, valueOf) {
+    (Array.isArray(list) ? list : []).forEach(function (rec) {
+      if (!rec || !rec.start_time) return;
+      var md = rec.metadata || {};
+      var origin = String(md.data_origin || md.dataOrigin || 'unknown');
+      var start = String(rec.start_time);
+      var end = String(rec.end_time || rec.start_time);
+      var value = Number(valueOf(rec));
+      if (isNaN(value)) return;
+      out.push({
+        key: type + '|' + (md.id ? String(md.id) : origin + '|' + start + '|' + end),
+        type: type, origin: origin, start: start, end: end, value: value,
+        date: hsSgtDate(start)
+      });
+    });
+  }
+  add('steps', body.steps, function (r) { return r.count; });
+  add('active', body.active_calories, function (r) { return r.calories; });
+  add('total', body.total_calories, function (r) { return r.calories; });
+  add('exercise', body.exercise || body.exercise_sessions || body.exercises, function () { return 0; });
+  return out;
+}
+
+/** One day's totals from every stored record for that date. */
+function hsRollup(store, date) {
+  var recs = Object.keys(store).map(function (k) { return store[k]; })
+    .filter(function (r) { return r.date === date; });
+
+  var sessions = recs.filter(function (r) { return r.type === 'exercise'; })
+    .map(function (r) { return [Date.parse(r.start), Date.parse(r.end)]; });
+
+  // share of a record's time span that falls inside an exercise session
+  function insideSessions(r) {
+    var a = Date.parse(r.start), b = Date.parse(r.end);
+    if (!(b > a)) return 0;
+    var covered = 0;
+    sessions.forEach(function (w) { covered += Math.max(0, Math.min(b, w[1]) - Math.max(a, w[0])); });
+    return Math.min(1, covered / (b - a));
+  }
+
+  // total per origin, then the single largest origin, never the sum of origins
+  function best(type, weight) {
+    var sums = {};
+    recs.forEach(function (r) {
+      if (r.type !== type) return;
+      var w = weight ? weight(r) : 1;
+      if (!w) return;
+      sums[r.origin] = (sums[r.origin] || 0) + r.value * w;
+    });
+    var top = null;
+    Object.keys(sums).forEach(function (o) {
+      if (!top || sums[o] > top.value) top = { value: sums[o], origin: o };
+    });
+    return top ? { value: Math.round(top.value), origin: top.origin } : null;
+  }
+
+  var steps = best('steps');
+  var active = best('active');
+  var exercise = sessions.length ? best('total', insideSessions) : null;
+  return {
+    steps: steps ? steps.value : null,
+    activeCal: active ? active.value : null,
+    exerciseCal: exercise ? exercise.value : null,
+    sessions: sessions.length,
+    origins: {
+      steps: steps ? steps.origin : null,
+      activeCal: active ? active.origin : null,
+      exerciseCal: exercise ? exercise.origin : null
+    }
+  };
+}
+
+function hsSgtDate(iso) {
+  return Utilities.formatDate(new Date(iso), 'Asia/Singapore', 'yyyy-MM-dd');
+}
+
+function hsShift(ymd, n) {
+  var p = String(ymd).split('-');
+  return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + n)).toISOString().slice(0, 10);
+}
+
+function hsRawSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(HS_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(HS_TAB);
+    sh.getRange(1, 1, 1, HS_HEAD.length).setValues([HS_HEAD]);
+    try { sh.hideSheet(); } catch (ignore) {}
+  }
+  return sh;
+}
+
+function hsLoad(sh) {
+  var store = {};
+  var n = sh.getLastRow() - 1;
+  if (n < 1) return store;
+  sh.getRange(2, 1, n, HS_HEAD.length).getValues().forEach(function (v) {
+    if (!v[0]) return;
+    store[String(v[0])] = {
+      key: String(v[0]), type: String(v[1]), origin: String(v[2]),
+      start: String(v[3]), end: String(v[4]), value: Number(v[5]),
+      date: cellDate(v[6]), received: String(v[7])
+    };
+  });
+  return store;
+}
+
+function hsSave(sh, store) {
+  var old = sh.getLastRow() - 1;
+  if (old > 0) sh.getRange(2, 1, old, HS_HEAD.length).clearContent();
+  var rows = Object.keys(store).sort().map(function (k) {
+    var r = store[k];
+    return [r.key, r.type, r.origin, r.start, r.end, r.value, r.date, r.received];
+  });
+  if (!rows.length) return;
+  if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+  // Plain text, so Sheets never turns ISO timestamps or dates into something else.
+  sh.getRange(2, 1, rows.length, HS_HEAD.length).setNumberFormat('@').setValues(rows);
 }
 
 /* ===================================================================== */
