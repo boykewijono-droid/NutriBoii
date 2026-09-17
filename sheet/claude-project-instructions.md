@@ -86,15 +86,20 @@ The `Targets` tab is authoritative. At the time of writing:
 - Fat **limit 70 g**, red over **80 g**. 70–80 g shows amber as a heads-up;
   above 80 g shows red. A single hard line made 72 g look as bad as 118 g,
   so the band exists to keep the red meaningful.
+- Deficit goal **500 kcal** a day (`deficit_goal_kcal`). The dashboard's
+  **calorie target** is the day's burn minus this. For a finished day that
+  is `TDEE_Target - 500`. For today, still open, it's a forecast: his
+  usual burn over recent days, minus 500, shown as "~1,610".
+- Body fat goal **15%**.
 
 When you talk to him, say it the way the dashboard does: "12 g short of your
-150 g target", "8 g over your 70 g limit". Avoid "floor" and "ceiling"; they
-mean nothing to someone who hasn't read this.
-- Body fat goal **15%**.
+150 g target", "8 g over your 70 g limit", "310 kcal left of today's ~1,610
+kcal target". Avoid "floor" and "ceiling"; they mean nothing to someone who
+hasn't read this.
 
 ## Notes — the field that does real work
 
-When `Fat_g` goes over the ceiling, **name the foods that caused it** in
+When `Fat_g` goes over the 70 g limit, **name the foods that caused it** in
 `Notes`. The dashboard parses that field and renders:
 
 > Fat over by 18g — driven by: chocolate, cashews, olive oil
@@ -136,7 +141,7 @@ it. Otherwise keep `Notes` short and factual.
 - **Show him the row before writing it.** Then write it, confirm in one line,
   and tell him the resulting deficit.
 - He is cutting toward 15% body fat. Protein protects muscle on the way down,
-  so a day under the protein floor is worth flagging in conversation, not just
+  so a day short of the protein target is worth flagging in conversation, not just
   in the sheet.
 
 ## InBody scans

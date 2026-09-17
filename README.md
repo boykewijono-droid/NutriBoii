@@ -71,7 +71,7 @@ Deficit     = TDEE_Target − Calories
 
 ### Notes are parsed, so name the foods
 
-When `Fat_g` goes over the ceiling, the dashboard reads `Notes` for what caused
+When `Fat_g` goes over the limit, the dashboard reads `Notes` for what caused
 it and says so on the day:
 
 > **Fat over by 18g — driven by: chocolate, cashews, olive oil.**
@@ -91,9 +91,15 @@ projection. `BodyFatMass_kg` can be left blank and is derived from weight × BF%
 
 ## What it shows
 
-**Today** — the hero. Calories, deficit and protein at a glance, then the
-7-day rolling average deficit and the countdown to 15% body fat side by side,
-then macros, then activity.
+**Today** — the hero. What you've eaten against today's calorie target, the
+deficit once the day is closed, and protein and fat with their balance in
+words. Then the 7-day rolling average deficit and the countdown to 15% body
+fat side by side, then macros, then activity.
+
+The hero's colours carry the verdict: **lime** is on target, **amber** is a
+heads-up (a deficit smaller than the goal, protein still to eat, fat between
+70 and 80 g), **red** is a real miss (a surplus, protein short on a finished
+day, fat over 80 g).
 
 **Week** — intake against target and daily deficit for the last 7 calendar
 days, plus the day-by-day table.
@@ -122,6 +128,13 @@ rows are matched onto it. A day you didn't log is a gap: a dashed tick on the
 chart, a dotted bridge across the line, "No data logged" in the table. It never
 drops to zero, and it never silently closes up so a week with a hole looks
 continuous.
+
+**A calorie target you can act on.** The day's burn (TDEE) is not a target:
+eating all of it is a zero deficit. The target is burn minus
+`deficit_goal_kcal` (500 by default, set it in the Targets tab). A finished
+day uses its real burn. Today's burn isn't known until the day ends, so the
+target is forecast from your usual burn over the last two weeks, never less
+than what today has already burned, and shown with a "~".
 
 **Today stays open until you close it.** Food arrives meal by meal and, with
 the phone sync running, activity arrives every hour, so neither means the day

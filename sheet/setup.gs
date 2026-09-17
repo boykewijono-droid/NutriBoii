@@ -42,7 +42,7 @@ var DAILY_COLS = [
   ['BMR',          'int',    'Latest InBody BMR. Blank = dashboard uses newest Baselines row.'],
   ['TDEE_Target',  'int',    'BMR + ExerciseCal*0.7 + (ActiveCal-ExerciseCal)*0.5. Blank = dashboard computes it.'],
   ['Deficit',      'int',    'TDEE_Target - Calories. Blank = dashboard computes it.'],
-  ['GymDay',       'text',   'Which split, e.g. "Day 3". Use "None" if no training.'],
+  ['GymDay',       'text',   'Yes or No. A split name such as "Day 3" also works.'],
   ['Notes',        'text',   'Free text. Name the foods when fat goes over — the dashboard surfaces them.']
 ];
 
@@ -61,6 +61,7 @@ var TGT_ROWS = [
   ['protein_goal_g',   160, 'g',  'Top of the healthy protein band.'],
   ['fat_ceiling_g',     70, 'g',  'Above this, fat shows AMBER as a heads-up.'],
   ['fat_red_g',         80, 'g',  'Above this, fat shows RED. A hard line made 72g look as bad as 118g.'],
+  ['deficit_goal_kcal', 500, 'kcal', 'Planned daily deficit. Calorie target = the day\'s burn minus this.'],
   ['bodyfat_goal_pct',  15, '%',  'The goal. Drives the "weeks to goal" projection.'],
   ['bmr_fallback',    1672, 'kcal', 'Only used if the Baselines tab is empty.']
 ];

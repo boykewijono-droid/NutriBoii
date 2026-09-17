@@ -193,14 +193,23 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .fig small{font-size:11.5px;color:var(--slab-dim)}
 .fig.lead b{color:var(--slab-fg)}
 .fig.good b{color:var(--slab-good)}
+.fig.caution b{color:var(--slab-amber)}
 .fig.bad b{color:var(--slab-bad)}
+.fig b.words{font-size:clamp(34px,6vw,52px);letter-spacing:-.02em}
 
-/* energy line: consumed vs target */
+/* energy line: eaten vs the calorie target (the tick), and what was burned */
 .energy{margin-top:26px}
-.energy-track{height:5px;background:var(--slab-line);position:relative;overflow:hidden}
+.energy-track{height:5px;background:var(--slab-line);position:relative}
 .energy-fill{position:absolute;inset:0 auto 0 0;background:var(--slab-fg);transition:width .7s var(--ease)}
-.energy-fill.over{background:var(--slab-bad)}
-.energy-marks{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:10.5px;color:var(--slab-dim)}
+.energy-fill.good{background:var(--slab-good)}
+.energy-fill.caution{background:var(--slab-amber)}
+.energy-fill.bad{background:var(--slab-bad)}
+.energy-track s{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--slab-fg);text-decoration:none}
+.energy-bal{margin-top:11px;font-size:12.5px;line-height:1.45;color:var(--slab-fg)}
+.energy-bal.good{color:var(--slab-good)}
+.energy-bal.caution{color:var(--slab-amber)}
+.energy-bal.bad{color:var(--slab-bad)}
+.energy-marks{display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:10.5px;color:var(--slab-dim)}
 .energy-note{margin-top:14px;font-size:11.5px;line-height:1.55;color:var(--slab-dim);max-width:62ch}
 
 /* protein and fat at a glance, in plain words: no "floor" or "ceiling" */
@@ -214,10 +223,9 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .stat .mini i{position:absolute;inset:0 auto 0 0;background:var(--slab-fg)}
 .stat .mini s{position:absolute;top:0;bottom:0;width:2px;background:var(--slab-dim);text-decoration:none}
 .stat .bal{display:block;font-size:12px;line-height:1.45;margin-top:9px;color:var(--slab-fg)}
-.stat.good .bal{color:var(--slab-good)}  .stat.good .mini i{background:var(--slab-good)}
+.stat.good .v,.stat.good .bal{color:var(--slab-good)}  .stat.good .mini i{background:var(--slab-good)}
 .stat.bad .v,.stat.bad .bal{color:var(--slab-bad)}  .stat.bad .mini i{background:var(--slab-bad)}
 .stat.caution .v,.stat.caution .bal{color:var(--slab-amber)}  .stat.caution .mini i{background:var(--slab-amber)}
-.stat.pend .bal{color:var(--slab-dim)}
 
 /* ==========================  quiet blocks  =============================== */
 .grid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:1px}
@@ -236,6 +244,7 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .cell.hl{background:var(--paper-2)}
 .cell .big.good{color:var(--good)}
 .cell .big.bad{color:var(--flag)}
+.cell .big.caution{color:var(--amber)}
 .cell .big.none{color:var(--ink-dim)}
 
 .sec{margin-top:44px}
@@ -259,7 +268,6 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .macro.warn .fill{background:var(--flag)}
 .macro.caution .fill{background:var(--amber)}
 .macro.ok .fill{background:var(--accent-dim)}
-.macro.pend .fill{background:var(--ink-45)}
 .notch{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--ink-70)}
 .band{position:absolute;top:0;bottom:0;background:var(--band-good)}
 .band.amber{background:var(--band-amber)}
