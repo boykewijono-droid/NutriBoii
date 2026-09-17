@@ -5,3 +5,4 @@ Thumbs.db
 # The original brief: personal context (BMR, body-fat goal) that does not
 # belong in a public repo. Kept locally.
 build-plan.md
+.gstack/

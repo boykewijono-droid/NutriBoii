@@ -49,13 +49,13 @@ One row in `Daily Log`, columns in this order:
 | `Protein_g` | `160` | grams |
 | `Fat_g` | `85` | grams |
 | `Carbs_g` | `134` | grams |
-| `Steps` | `8872` | Samsung Health |
+| `Steps` | `8872` | Samsung Health, synced hourly ([SYNC.md](SYNC.md)) |
 | `ActiveCal` | `642` | Samsung Health activity calories |
 | `ExerciseCal` | `547` | Samsung Health exercise calories |
 | `BMR` | `1672` | optional — blank uses the newest `Baselines` row |
 | `TDEE_Target` | | optional — blank and the dashboard computes it |
 | `Deficit` | | optional — blank and the dashboard computes it |
-| `GymDay` | `Day 3` | or `None` |
+| `GymDay` | `Yes` | `Yes` or `No` (or a split like `Day 3`) |
 | `Notes` | `fat over from cashews + oil` | free text, and see below |
 
 Blank means *not known*. It is rendered as an em dash and left out of every
@@ -201,8 +201,9 @@ acceptable, the options are a small proxy holding a service-account key
 (Cloudflare Worker or similar), or going back to a scheduled job that bakes the
 data into the page at build time — which costs you the live reads.
 
-## Later: activity auto-fill
+## Activity auto-fill
 
-`Steps`, `ActiveCal` and `ExerciseCal` are plain typed columns with nothing
-coupling them to manual entry, so a Google Fit or Health Connect job can fill
-them without a schema change or any edit here. Deliberately not built yet.
+`Steps` and `ExerciseCal` (and `ActiveCal`, if the phone shares it) arrive
+hourly from Samsung Health through Health Connect and the API's `sync` action.
+The sync writes only those three columns and never touches food. Setup and
+caveats: [SYNC.md](SYNC.md).
