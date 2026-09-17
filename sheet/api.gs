@@ -274,34 +274,54 @@ function deleteDay(p) {
  * Samsung Health (or Health Sync) -> Health Connect -> the "Health Connect
  * Webhook" Android app -> POST <URL>?token=T&action=sync, JSON body.
  *
- * The app sends only records NEW since its last sync, from a rolling 48-hour
- * window, so one payload is never a day's total. Every record is kept in a
- * hidden raw tab, keyed by its Health Connect record id, and each day's totals
- * are rebuilt from everything stored for that date. A record that Samsung
- * keeps updating through the day (its single daily step count) keeps the same
- * id, so it is replaced rather than added again.
+ * What the app actually sends (checked against its source, Sept 2026):
+ *   - Steps and active calories default to a DAILY resolution: one running
+ *     total per calendar day, from Health Connect's own aggregate (which
+ *     already de-duplicates between apps). Each sync re-sends today as
+ *     [midnight, now], so the 10:00 total must REPLACE the 09:00 one, never
+ *     be added to it. These records carry no metadata at all.
+ *   - Total calories and exercise sessions default to raw records, with
+ *     metadata.data_origin but NO record id.
+ *   - The very first sync, and a manual "Past 7 days" sync, starts its window
+ *     part-way through the oldest day. That day's daily total covers only the
+ *     tail of the day, so it is dropped rather than written as if complete.
  *
- * Two apps can both write steps into Health Connect, Samsung Health and Health
- * Sync for example. Summing them would double the count, so for each date and
- * data type only the ONE origin with the largest total is used.
+ * So records are stored in a hidden tab keyed by type, origin and time span,
+ * and each day is rebuilt from them. Within one type and origin, overlapping
+ * records are resolved newest first: a later running total supersedes an
+ * earlier one and the superseded record is deleted. Records that do not
+ * overlap (raw intervals, time buckets) are added up.
  *
- * ExerciseCal is total calories burned INSIDE exercise sessions, pro rata by
- * overlap, so an all-day calorie stream is never counted as exercise.
- * ActiveCal is written only when active-calorie records actually arrive:
- * Samsung Health does not share its all-day activity calories with Health
- * Connect, and a value that never arrived must stay blank, not become 0.
+ * Two apps can both write raw steps into Health Connect, Samsung Health and
+ * Health Sync for example. Summing them would double the count, so for each
+ * date and type only the ONE origin with the largest total is used.
+ *
+ * ExerciseCal is calories from records that sit mostly inside an exercise
+ * session, pro rata by overlap, so an all-day calorie record is never counted
+ * as exercise. ActiveCal is written only when active-calorie records arrive
+ * AND add up to more than the exercise calories: Samsung Health does not share
+ * its all-day activity calories with Health Connect, and workout-only active
+ * calories written as ActiveCal would stop Claude asking for the real number.
+ * A value that never arrived stays blank, not 0.
  *
  * Names are hs-prefixed: every .gs file in the project shares one scope.
  */
 var HS_TAB = 'Activity Sync';
 var HS_HEAD = ['Key', 'Type', 'Origin', 'Start', 'End', 'Value', 'Date', 'Received'];
-var HS_KEEP_DAYS = 5;
+var HS_KEEP_DAYS = 7;          // rebuild and keep this many days: covers a "Past 7 days" resend
 
 function hsSync(e) {
   var body;
   try { body = JSON.parse((e && e.postData && e.postData.contents) || ''); }
   catch (err) { throw new Error('sync expects the JSON body sent by the Health Connect Webhook app.'); }
   if (!body || typeof body !== 'object') throw new Error('sync expects a JSON object body.');
+
+  // The app's "Test Webhook" button sends made-up data flagged test:true.
+  // Confirm the connection works, and write none of it.
+  if (body.test === true) {
+    return { ok: true, action: 'sync', test: true, received: 0,
+             summary: 'Test received. The connection works; test data is not written to the sheet.' };
+  }
 
   var lock = LockService.getDocumentLock();
   if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
@@ -323,6 +343,8 @@ function hsSync(e) {
     Object.keys(touched).sort().forEach(function (date) {
       if (date < cutoff) return;       // older than the window worth rebuilding
       var t = hsRollup(store, date);
+      t.superseded.forEach(function (k) { delete store[k]; });
+      delete t.superseded;
       var p = {};
       if (t.steps != null) p.steps = t.steps;
       if (t.activeCal != null) p.activecal = t.activeCal;
@@ -360,13 +382,18 @@ function hsRecords(body) {
     (Array.isArray(list) ? list : []).forEach(function (rec) {
       if (!rec || !rec.start_time) return;
       var md = rec.metadata || {};
-      var origin = String(md.data_origin || md.dataOrigin || 'unknown');
+      // Daily totals and time buckets come with no metadata: they are
+      // Health Connect aggregates, not one app's records.
+      var origin = String(md.data_origin || md.dataOrigin || 'aggregate');
       var start = String(rec.start_time);
       var end = String(rec.end_time || rec.start_time);
+      var a = Date.parse(start), b = Date.parse(end);
+      if (isNaN(a) || isNaN(b)) return;
       var value = Number(valueOf(rec));
       if (isNaN(value)) return;
+      if (!rec.metadata && type !== 'exercise' && hsClippedDay(a, b)) return;
       out.push({
-        key: type + '|' + (md.id ? String(md.id) : origin + '|' + start + '|' + end),
+        key: type + '|' + origin + '|' + (md.id ? String(md.id) : start + '|' + end),
         type: type, origin: origin, start: start, end: end, value: value,
         date: hsSgtDate(start)
       });
@@ -379,21 +406,65 @@ function hsRecords(body) {
   return out;
 }
 
-/** One day's totals from every stored record for that date. */
+/** A daily total cut short by the start of the app's lookback window: it ends
+ *  at a Singapore midnight but starts part-way through that day, at the exact
+ *  instant the window opened (never on a whole minute). Writing it would put
+ *  the last few hours of steps into the sheet as if they were the whole day. */
+function hsClippedDay(a, b) {
+  var DAY = 86400000, SGT = 8 * 3600000;
+  var endsAtMidnight = (b + SGT) % DAY === 0;
+  var startsAtMidnight = (a + SGT) % DAY === 0;
+  return endsAtMidnight && !startsAtMidnight && a % 60000 !== 0;
+}
+
+/** One day's totals from every stored record for that date. Also returns the
+ *  keys of records a newer overlapping record has superseded, for deletion. */
 function hsRollup(store, date) {
-  var recs = Object.keys(store).map(function (k) { return store[k]; })
+  var all = Object.keys(store).map(function (k) { return store[k]; })
     .filter(function (r) { return r.date === date; });
+
+  // Within one type and origin, some overlapping records are versions of the
+  // same thing, such as today's running total at 09:00 and again at 10:00.
+  // Keep the newest; on a tie, the one covering more time, then the later end.
+  // For aggregates (no origin) any overlap means a newer version. One app's
+  // own records can overlap legitimately, a day's calorie total and a
+  // workout's inside it, so there only a record re-sent from the SAME start
+  // with a later end counts as a newer version.
+  var groups = {}, recs = [], superseded = [];
+  all.forEach(function (r) {
+    var g = r.type + '|' + r.origin;
+    (groups[g] = groups[g] || []).push({ r: r, a: Date.parse(r.start), b: Date.parse(r.end) });
+  });
+  Object.keys(groups).forEach(function (g) {
+    var accepted = [];
+    groups[g].sort(function (x, y) {
+      if (x.r.received !== y.r.received) return x.r.received < y.r.received ? 1 : -1;
+      if (x.b - x.a !== y.b - y.a) return (y.b - y.a) - (x.b - x.a);
+      if (x.b !== y.b) return y.b - x.b;
+      return y.r.value - x.r.value;
+    }).forEach(function (x) {
+      var clash = accepted.some(function (y) {
+        var overlap = x.a < y.b && y.a < x.b;
+        return x.r.origin === 'aggregate' ? overlap : overlap && x.a === y.a;
+      });
+      if (clash) { superseded.push(x.r.key); return; }
+      accepted.push(x);
+      recs.push(x.r);
+    });
+  });
 
   var sessions = recs.filter(function (r) { return r.type === 'exercise'; })
     .map(function (r) { return [Date.parse(r.start), Date.parse(r.end)]; });
 
-  // share of a record's time span that falls inside an exercise session
-  function insideSessions(r) {
+  // Share of a record's time span inside an exercise session. A record that is
+  // mostly outside every session (an all-day total, a walk) counts for nothing.
+  function sessionShare(r) {
     var a = Date.parse(r.start), b = Date.parse(r.end);
     if (!(b > a)) return 0;
     var covered = 0;
     sessions.forEach(function (w) { covered += Math.max(0, Math.min(b, w[1]) - Math.max(a, w[0])); });
-    return Math.min(1, covered / (b - a));
+    var share = Math.min(1, covered / (b - a));
+    return share >= 0.5 ? share : 0;
   }
 
   // total per origin, then the single largest origin, never the sum of origins
@@ -413,9 +484,13 @@ function hsRollup(store, date) {
   }
 
   var steps = best('steps');
+  // Samsung Health maps a workout's calories to total-calorie records spanning
+  // the session. Active-calorie records inside sessions are the fallback.
+  var exercise = sessions.length ? (best('total', sessionShare) || best('active', sessionShare)) : null;
   var active = best('active');
-  var exercise = sessions.length ? best('total', insideSessions) : null;
+  if (active && exercise && active.value <= exercise.value) active = null;   // workout-only, not all-day
   return {
+    superseded: superseded,
     steps: steps ? steps.value : null,
     activeCal: active ? active.value : null,
     exerciseCal: exercise ? exercise.value : null,
@@ -629,7 +704,7 @@ function summarise(row) {
   bits.push(cal == null ? 'no intake logged' : cal + ' kcal');
   if (bmr != null) {
     var tdee = Math.round(bmr + (ex || 0) * 0.7 + Math.max(0, (ac || 0) - (ex || 0)) * 0.5);
-    bits.push('target ' + tdee);
+    bits.push('burn ' + tdee);
     if (cal != null) {
       var def = tdee - cal;
       bits.push((def >= 0 ? 'deficit +' : 'surplus ') + def);
@@ -670,12 +745,12 @@ function htmlReply(o) {
   'body{margin:0;background:#E9E4D8;color:#16150F;font:14px/1.55 ui-monospace,Menlo,monospace;padding:28px 20px}' +
   '.card{max-width:520px;margin:0 auto;background:#F4F1E8;border:1px solid #D6CFBE;padding:24px}' +
   'h1{font:600 22px/1.1 Georgia,serif;margin:0 0 4px;letter-spacing:-.01em}' +
-  '.lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#7C7768;margin-bottom:14px}' +
+  '.lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#68645B;margin-bottom:14px}' +
   '.sum{background:#16150F;color:#B4D336;padding:14px 16px;margin:16px 0;font-size:13px;word-break:break-word}' +
   '.err{background:#16150F;color:#E8836B;padding:14px 16px;margin:16px 0;font-size:13px}' +
   'table{border-collapse:collapse;width:100%;font-size:12px;margin-top:8px}' +
   'td{padding:7px 0;border-bottom:1px solid #E0DACB}' +
-  'td:first-child{color:#7C7768;width:45%}td:last-child{text-align:right;font-weight:500}' +
+  'td:first-child{color:#68645B;width:45%}td:last-child{text-align:right;font-weight:500}' +
   'a{display:inline-block;margin-top:20px;background:#16150F;color:#F4F1E8;padding:11px 20px;text-decoration:none;font-size:12px;letter-spacing:.04em}' +
   '</style><div class="card">' +
   '<h1>' + (ok ? headingFor(o) : 'Not written') + '</h1>' +

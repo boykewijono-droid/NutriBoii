@@ -290,7 +290,7 @@ console.log('\n=== read back, POST, and the tap-link page ===');
   const eTdee = Math.round(1672 + 410 * 0.7 + (700 - 410) * 0.5);   // 2104
   const eDef = eTdee - 1795;                                        // 309
   ok('summary computes TDEE + deficit per the formula',
-     r.summary.indexOf('target ' + eTdee) >= 0 && r.summary.indexOf('deficit +' + eDef) >= 0,
+     r.summary.indexOf('burn ' + eTdee) >= 0 && r.summary.indexOf('deficit +' + eDef) >= 0,
      'expected target ' + eTdee + ' / deficit +' + eDef + ', got: ' + r.summary);
   r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'get', format: 'json', date: '2026-01-01' }));
   ok('missing day reports not found, no crash', r.ok && r.found === false);
