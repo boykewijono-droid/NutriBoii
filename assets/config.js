@@ -32,7 +32,7 @@ window.NUTRIBOII_CONFIG = {
     protein_goal_g:    160,   // top of the healthy band
     fat_ceiling_g:      70,   // above this = AMBER, a heads-up
     fat_red_g:          80,   // above this = RED, a real overshoot
-    deficit_goal_kcal: 500,   // planned daily deficit; calorie target = burn - this
+    deficit_goal_pct:   15,   // calorie target = burn less this %, never below BMR
     bodyfat_goal_pct:   15,   // the "why" — drives the projection
     bmr_fallback:     1600    // placeholder; only used if Baselines is empty
   },

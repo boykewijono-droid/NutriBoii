@@ -4,7 +4,7 @@ Steps and workout calories flow from your phone into the Sheet on their own,
 so Claude only needs to ask you about food.
 
 ```
-Samsung Health ──▶ Health Connect ──▶ Health Connect Webhook ──▶ NutriBoii API ──▶ Sheet ──▶ dashboard
+Samsung Health ──▶ Health Connect ──▶ HC Webhook app ──▶ NutriBoii API ──▶ Sheet ──▶ dashboard
    (built-in link)     (on the phone)      (posts every 60 min)       (action=sync)
 ```
 
@@ -66,13 +66,31 @@ Health**.
 To check it works: Health Connect → **Data and access → Activity → Steps**
 should show today's steps, with Samsung Health as the source.
 
-### 3. Install the webhook app
+### 3. Install the webhook app, free, with Obtainium
 
-Play Store: **[Health Connect Webhook](https://play.google.com/store/apps/details?id=com.hcwebhook.app)**
-([source](https://github.com/mcnaveen/health-connect-webhook)).
+The Play Store version costs $6.49. The same developer publishes the same app
+free on GitHub, and it's the build this setup was checked against. The only
+difference is a check that the app came from Play. Obtainium installs it
+from GitHub and keeps it updated.
 
-When it asks for Health Connect access, allow these four and nothing else:
-**Steps**, **Active Calories**, **Total Calories**, **Exercise Sessions**.
+1. On the phone, open **[Obtainium's releases](https://github.com/ImranR98/Obtainium/releases/latest)**
+   and download the APK listed as **`app-arm64-v8a-release.apk`**. Open it. Android asks
+   to allow installs from your browser: allow it, install, then switch that
+   permission back off.
+2. Open Obtainium → **Add App** → App source URL:
+   `https://github.com/mcnaveen/health-connect-webhook` → **Add**.
+3. It finds **HC Webhook** (file `app-foss-release.apk`). Tap **Install**,
+   and allow Obtainium to install apps when Android asks.
+
+Obtainium checks for updates in the background and notifies you. The app's
+name on the phone is **HC Webhook**.
+
+When HC Webhook first asks for Health Connect access, allow these four and
+nothing else: **Steps**, **Active Calories**, **Total Calories**, **Exercise
+Sessions**.
+
+Prefer to pay, or to skip Obtainium? The [Play Store version](https://play.google.com/store/apps/details?id=com.hcwebhook.app)
+works exactly the same with every step here.
 
 ### 4. Choose the data types
 
@@ -110,8 +128,8 @@ real check.
 
 Samsung phones kill background apps aggressively, and a sleeping app doesn't sync.
 
-- **Settings → Apps → Health Connect Webhook → Battery → Unrestricted**
-- **Settings → Battery → Background usage limits → Never sleeping apps → add Health Connect Webhook**
+- **Settings → Apps → HC Webhook → Battery → Unrestricted**
+- **Settings → Battery → Background usage limits → Never sleeping apps → add HC Webhook**
 
 ### 8. Run the first sync
 

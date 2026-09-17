@@ -130,9 +130,11 @@ drops to zero, and it never silently closes up so a week with a hole looks
 continuous.
 
 **A calorie target you can act on.** The day's burn (TDEE) is not a target:
-eating all of it is a zero deficit. The target is burn minus
-`deficit_goal_kcal` (500 by default, set it in the Targets tab). A finished
-day uses its real burn. Today's burn isn't known until the day ends, so the
+eating all of it is a zero deficit. The target is the burn less
+`deficit_goal_pct` (15% by default, set it in the Targets tab), and never
+below your BMR. A percentage, not a flat number: a flat 500 put the target
+below BMR on an ordinary day, and a gym day's bigger burn earns more food.
+2,091 kcal burned gives a target of 1,777. A finished day uses its real burn. Today's burn isn't known until the day ends, so the
 target is forecast from your usual burn over the last two weeks, never less
 than what today has already burned, and shown with a "~".
 

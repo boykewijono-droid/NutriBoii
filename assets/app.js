@@ -468,8 +468,11 @@ function gymLabel(d) {
 }
 
 /* --- the calorie target ------------------------------------------------ */
-/** The planned daily deficit, from the Targets tab (deficit_goal_kcal). */
-function deficitGoal(t) { return t.deficit_goal_kcal == null ? 500 : t.deficit_goal_kcal; }
+/** The planned deficit as a share of the day's burn, from the Targets tab
+ *  (deficit_goal_pct). A percentage rather than a flat number: a flat 500
+ *  put the target below BMR on an ordinary 2,100 kcal day, and a gym day's
+ *  bigger burn deserves more food, not the same cut. */
+function deficitPct(t) { return t.deficit_goal_pct == null ? 15 : t.deficit_goal_pct; }
 
 /** Calories a day burns. A finished day's is known. Today's is forecast from
  *  the average of recent finished days with activity logged, and never less
@@ -488,21 +491,37 @@ function expectedBurn(d) {
   var typical = Math.round(mean(vals) / 10) * 10;
   return d.tdee != null ? Math.max(typical, d.tdee) : typical;
 }
-/** What to eat to hit the deficit goal: burn minus the goal. */
+/** What to eat to hit the deficit goal: the burn less deficit_goal_pct, and
+ *  never below the day's BMR. */
 function calorieTarget(d, t) {
   var burn = expectedBurn(d);
-  return burn == null ? null : Math.round(burn - deficitGoal(t));
+  if (burn == null) return null;
+  var target = Math.round(burn * (1 - deficitPct(t) / 100));
+  return d.bmr != null ? Math.max(target, Math.round(d.bmr)) : target;
+}
+/** The deficit that target stands for, in kcal: normally 15% of the burn,
+ *  smaller on a low-burn day where the BMR floor holds the target up. */
+function deficitGoal(d, t) {
+  var burn = expectedBurn(d), target = calorieTarget(d, t);
+  return burn == null || target == null ? null : Math.max(0, Math.round(burn - target));
+}
+/** One line saying how the target is set, for notes and legends. */
+function targetRule(t) {
+  return (100 - deficitPct(t)) + '% of burn, never below BMR';
 }
 
 /** Rolling average deficit over the last N calendar days, logged days only. */
 function rollingDeficit(endDate, n) {
-  var vals = [], span = calendarRange(addDays(endDate, -(n - 1)), endDate);
+  var vals = [], goals = [], span = calendarRange(addDays(endDate, -(n - 1)), endDate);
   span.forEach(function (d) {
     var day = M.days[d];
-    if (day && day.deficit != null && day.countable) vals.push(day.deficit);
+    if (day && day.deficit != null && day.countable) {
+      vals.push(day.deficit);
+      goals.push(deficitGoal(day, M.targets));
+    }
   });
   var end = M.days[endDate];
-  return { avg: mean(vals), n: vals.length, of: n,
+  return { avg: mean(vals), goal: mean(goals), n: vals.length, of: n,
            pendingToday: !!(end && end.inProgress && end.hasIntake) };
 }
 
@@ -930,10 +949,10 @@ function renderToday() {
 
 /** A finished day: eaten against burned, the deficit against the goal. */
 function heroSlab(d, t) {
-  var goal = deficitGoal(t), target = calorieTarget(d, t);
+  var goal = deficitGoal(d, t), target = calorieTarget(d, t);
   // Colour carries the verdict: lime met the goal, amber a deficit short of
   // it, red a surplus.
-  var defCls = d.deficit == null ? '' : d.deficit < 0 ? 'bad' : d.deficit >= goal ? 'good' : 'caution';
+  var defCls = d.deficit == null ? '' : d.deficit < 0 ? 'bad' : goal == null || d.deficit >= goal ? 'good' : 'caution';
   return '<div class="slab">' +
     '<div class="slab-top"><span class="lbl">' + esc(relDay(d.date)) + ' · complete</span>' +
       (d.dayType ? '<span class="chip ' + d.dayType + '">' + d.dayType + '</span>' : '') +
@@ -943,7 +962,7 @@ function heroSlab(d, t) {
         '<small>' + (d.tdee ? 'eaten, of ' + nf(d.tdee) + ' burned' : 'eaten') + '</small></div>' +
       (d.deficit == null ? '' :
       '<div class="fig ' + defCls + '"><b>' + signed(d.deficit) + '<span class="u">kcal</span></b>' +
-        '<small>' + (d.deficit < 0 ? 'surplus today' : 'deficit today') + ' · goal ' + signed(goal) + '</small></div>') +
+        '<small>' + (d.deficit < 0 ? 'surplus today' : 'deficit today') + (goal != null ? ' · goal ' + signed(goal) : '') + '</small></div>') +
     '</div>' +
     energyBar(d.cal, target, d.tdee, false) +
     macroStats(d, t) +
@@ -977,7 +996,8 @@ function heroProgress(d, t) {
     macroStats(d, t) +
     '<div class="energy-note">Today stays open until you close it with Claude, which logs the day type. ' +
       'Until then it is left out of the 7‑day average.' +
-      (target != null ? ' The target is your usual burn minus your ' + nf(deficitGoal(t)) + ' kcal deficit goal.' : '') + '</div>' +
+      (target != null ? ' The target is ' + (100 - deficitPct(t)) + '% of your usual burn, a ' + deficitPct(t) +
+        '% deficit, and never below your BMR.' : '') + '</div>' +
   '</div>';
 }
 
@@ -1079,7 +1099,7 @@ function heroVoid(d) {
 }
 
 function rollingCell(r) {
-  var goal = deficitGoal(M.targets);
+  var goal = r.goal == null ? null : Math.round(r.goal);
   if (r.avg == null) {
     return '<div class="cell hl"><span class="lbl">' + r.of + '-day average deficit</span>' +
       '<span class="big none">—</span><span class="sub">' +
@@ -1088,8 +1108,9 @@ function rollingCell(r) {
   }
   var good = r.avg >= 0;
   return '<div class="cell hl"><span class="lbl">' + r.of + '-day average deficit</span>' +
-    '<span class="big ' + (!good ? 'bad' : r.avg >= goal ? 'good' : 'caution') + '">' + signed(Math.round(r.avg)) + '<span class="u">kcal/day</span></span>' +
-    '<span class="sub">Goal ' + signed(goal) + '. Across ' + r.n + ' finished day' + (r.n === 1 ? '' : 's') + ' of the last ' + r.of + '. ' +
+    '<span class="big ' + (!good ? 'bad' : goal == null || r.avg >= goal ? 'good' : 'caution') + '">' + signed(Math.round(r.avg)) + '<span class="u">kcal/day</span></span>' +
+    '<span class="sub">' + (goal != null ? 'Goal ' + signed(goal) + ' (' + deficitPct(M.targets) + '% of burn). ' : '') +
+      'Across ' + r.n + ' finished day' + (r.n === 1 ? '' : 's') + ' of the last ' + r.of + '. ' +
       (good ? '≈ ' + nf(r.avg * 7 / 7700, 2) + ' kg of fat per week.' : 'Currently in surplus.') +
       (r.pendingToday ? ' Today counts once you close it with Claude.' : '') +
     '</span></div>';
@@ -1213,6 +1234,8 @@ function renderWeek() {
   var pending = days.some(function (d) { return d.inProgress && d.hasIntake; });
   var avgCal = mean(logged.map(function (d) { return d.cal; }));
   var avgDef = mean(logged.map(function (d) { return d.deficit; }));
+  var avgGoal = mean(logged.map(function (d) { return d.deficit == null ? null : deficitGoal(d, M.targets); }));
+  avgGoal = avgGoal == null ? null : Math.round(avgGoal);
   var totSteps = days.reduce(function (a, d) { return a + (d.steps || 0); }, 0);
   var gyms = days.filter(function (d) { return gymState(d) === 'yes'; }).length;
   var notYet = pending ? 'Today not counted yet' : null;
@@ -1221,8 +1244,8 @@ function renderWeek() {
     cell('Days logged', logged.length + ' / ' + n, null, null, pending ? '+ today, in progress' : null) +
     cell('Avg intake', avgCal == null ? null : nf(Math.round(avgCal)), 'kcal', null, avgCal == null ? null : notYet) +
     cell('Avg deficit', avgDef == null ? null : signed(Math.round(avgDef)), 'kcal',
-         avgDef < 0 ? 'bad' : avgDef >= deficitGoal(M.targets) ? 'good' : 'caution',
-         avgDef == null ? null : notYet || 'goal ' + signed(deficitGoal(M.targets))) +
+         avgDef < 0 ? 'bad' : avgGoal == null || avgDef >= avgGoal ? 'good' : 'caution',
+         avgDef == null ? null : notYet || (avgGoal == null ? null : 'goal ' + signed(avgGoal))) +
     cell('Gym days', gyms, null) +
   '</div>';
 
@@ -1238,7 +1261,7 @@ function renderWeek() {
 
   mountChart($('#cWeekCal'), function (w) {
     return chartHead('Intake vs target',
-        '<span><i class="key"></i>intake</span><span><i class="key t"></i>target: burn − ' + nf(deficitGoal(M.targets)) + '</span><span><i class="key g"></i>gap in log</span>' +
+        '<span><i class="key"></i>intake</span><span><i class="key t"></i>target: ' + targetRule(M.targets) + '</span><span><i class="key g"></i>gap in log</span>' +
         (days.some(function (d) { return d.flagged; }) ? '<span><i class="key fd"></i>protein short or fat over</span>' : '') +
         (pending ? '<span><i class="key p"></i>today, so far</span>' : '')) +
       lineChart(w, {
@@ -1386,7 +1409,7 @@ function renderTrends() {
   var pendingT = days.some(function (d) { return d.inProgress && d.hasIntake; });
   mountChart($('#cTrendCal'), function (w) {
     return chartHead('Intake vs target',
-        '<span><i class="key"></i>intake</span><span><i class="key t"></i>target: burn − ' + nf(deficitGoal(M.targets)) + '</span><span><i class="key g"></i>gap in log</span>' +
+        '<span><i class="key"></i>intake</span><span><i class="key t"></i>target: ' + targetRule(M.targets) + '</span><span><i class="key g"></i>gap in log</span>' +
         (days.some(function (d) { return d.flagged; }) ? '<span><i class="key fd"></i>protein short or fat over</span>' : '') +
         (pendingT ? '<span><i class="key p"></i>today, so far</span>' : '')) +
       lineChart(w, {

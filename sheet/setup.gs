@@ -61,7 +61,7 @@ var TGT_ROWS = [
   ['protein_goal_g',   160, 'g',  'Top of the healthy protein band.'],
   ['fat_ceiling_g',     70, 'g',  'Above this, fat shows AMBER as a heads-up.'],
   ['fat_red_g',         80, 'g',  'Above this, fat shows RED. A hard line made 72g look as bad as 118g.'],
-  ['deficit_goal_kcal', 500, 'kcal', 'Planned daily deficit. Calorie target = the day\'s burn minus this.'],
+  ['deficit_goal_pct',  15, '%',  'Planned deficit. Calorie target = the day\'s burn less this %, never below BMR.'],
   ['bodyfat_goal_pct',  15, '%',  'The goal. Drives the "weeks to goal" projection.'],
   ['bmr_fallback',    1672, 'kcal', 'Only used if the Baselines tab is empty.']
 ];

@@ -86,14 +86,15 @@ The `Targets` tab is authoritative. At the time of writing:
 - Fat **limit 70 g**, red over **80 g**. 70–80 g shows amber as a heads-up;
   above 80 g shows red. A single hard line made 72 g look as bad as 118 g,
   so the band exists to keep the red meaningful.
-- Deficit goal **500 kcal** a day (`deficit_goal_kcal`). The dashboard's
-  **calorie target** is the day's burn minus this. For a finished day that
-  is `TDEE_Target - 500`. For today, still open, it's a forecast: his
-  usual burn over recent days, minus 500, shown as "~1,610".
+- Deficit goal **15% of the day's burn** (`deficit_goal_pct`). The
+  dashboard's **calorie target** is 85% of the burn, and never below his BMR.
+  For a finished day that's `max(TDEE_Target x 0.85, BMR)`: 2,091 burned
+  gives 1,777. For today, still open, it's a forecast from his usual burn
+  over recent days, shown with a "~". Never suggest eating below BMR.
 - Body fat goal **15%**.
 
 When you talk to him, say it the way the dashboard does: "12 g short of your
-150 g target", "8 g over your 70 g limit", "310 kcal left of today's ~1,610
+150 g target", "8 g over your 70 g limit", "310 kcal left of today's ~1,780
 kcal target". Avoid "floor" and "ceiling"; they mean nothing to someone who
 hasn't read this.
 
