@@ -116,9 +116,15 @@ the end. They're kept out of this public repo on purpose.
 Tap **Test Webhook**. It should say **Test successful**. The test sends made-up
 numbers, which NutriBoii recognises and doesn't write.
 
-"Test successful" only proves the phone reached Google. Apps Script always
-answers with a success code, even when the token is wrong, so step 8 is the
-real check.
+Two quirks of that message:
+
+- **"Test successful: Failed" means it worked.** The app hides `token=` in its
+  logs, then looks the test up by the unhidden URL, finds nothing, and prints
+  "Failed" where the status code should be. The **Logs** screen shows the real
+  result: status 200.
+- **"Test successful" only proves the phone reached Google.** Apps Script
+  answers with a success code even when the token is wrong or the API wasn't
+  redeployed, so step 8 is the real check.
 
 ### 6. Sync every hour
 
