@@ -474,22 +474,31 @@ function gymLabel(d) {
  *  bigger burn deserves more food, not the same cut. */
 function deficitPct(t) { return t.deficit_goal_pct == null ? 15 : t.deficit_goal_pct; }
 
-/** Calories a day burns. A finished day's is known. Today's is forecast from
- *  the average of recent finished days with activity logged, and never less
- *  than what today has already been credited with. Without that history, and
- *  with no activity yet, there is no honest forecast: BMR alone would set a
- *  target hundreds of calories too low. */
+/** Calories a day burns. A finished day's is known.
+ *
+ *  Today's is a forecast, and it has to hold two things at once: activity
+ *  already earned never disappears, and the hours left can still add more.
+ *  So it is today's own activity plus a shrinking share of what a usual day
+ *  adds, which means the forecast converges on today's real burn as the day
+ *  ends. Taking the bigger of "today so far" and "a usual day" instead left
+ *  the target sitting on last week's average at 11pm, ignoring a long walk. */
 function expectedBurn(d) {
   if (!d.inProgress) return d.tdee;
+  if (d.bmr == null) return d.tdee;
   var vals = [];
   for (var i = 1; i <= 14; i++) {
     var p = M.days[addDays(d.date, -i)];
-    if (p && p.countable && p.tdee != null && (p.active != null || p.exercise != null)) vals.push(p.tdee);
+    if (p && p.countable && p.tdee != null && p.bmr != null && (p.active != null || p.exercise != null)) {
+      vals.push(p.tdee - p.bmr);            // that day's activity, above resting
+    }
   }
-  var hasActivity = d.active != null || d.exercise != null;
-  if (vals.length < 3) return hasActivity ? d.tdee : null;
-  var typical = Math.round(mean(vals) / 10) * 10;
-  return d.tdee != null ? Math.max(typical, d.tdee) : typical;
+  var soFar = d.tdee != null ? d.tdee - d.bmr : 0;
+  // Without a few days of history there is no honest forecast: resting burn
+  // alone would set a target hundreds of calories too low.
+  if (vals.length < 3) return (d.active != null || d.exercise != null) ? d.tdee : null;
+  var c = sgtClock(), left = 1 - (c.h * 60 + c.m) / 1440;
+  var more = Math.max(0, mean(vals) - soFar) * left;
+  return Math.round((d.bmr + soFar + more) / 10) * 10;
 }
 /** What to eat to hit the deficit goal: the burn less deficit_goal_pct, and
  *  never below the day's BMR. */
@@ -964,7 +973,8 @@ function renderToday() {
        '<div class="grid g4">' +
          cell('Steps', d.steps == null ? null : nf(d.steps), null, null, d.inProgress && d.steps != null ? 'so far today' : null) +
          cell('Active', d.active == null ? null : nf(d.active), 'kcal', null, d.inProgress && d.active != null ? 'so far today' : null) +
-         cell('Exercise', d.exercise == null ? null : nf(d.exercise), 'kcal', null, d.inProgress && d.exercise != null ? 'so far today' : null) +
+         cell('Exercise', d.exercise == null ? null : nf(d.exercise), 'kcal', null,
+              d.exercise != null && d.inProgress ? 'so far today' : null) +
          (function () {
            var a = activityLevel(d);
            return cell('Activity', a && a.level, null, a && a.level === 'High' ? 'good' : '',
@@ -977,6 +987,7 @@ function renderToday() {
          '<span class="lbl">Note</span>' + esc(d.notes) + '</div></div>';
   }
   host.innerHTML = h;
+  paintHero(host);
 }
 
 /** A finished day: eaten against burned, the deficit against the goal. */
@@ -993,7 +1004,8 @@ function heroSlab(d, t) {
       '<div class="fig lead"><b>' + nf(d.cal) + '<span class="u">kcal</span></b>' +
         '<small>' + (d.tdee ? 'eaten, of ' + nf(d.tdee) + ' burned' : 'eaten') + '</small></div>' +
       (d.deficit == null ? '' :
-      '<div class="fig ' + defCls + '"><b>' + signed(d.deficit) + '<span class="u">kcal</span></b>' +
+      '<div class="fig big-deficit ' + defCls + '"><b><span data-count="' + d.deficit + '">' +
+        signed(d.deficit) + '</span><span class="u">kcal</span></b>' +
         '<small>' + (d.deficit < 0 ? 'surplus today' : 'deficit today') + (goal != null ? ' · goal ' + signed(goal) : '') + '</small></div>') +
     '</div>' +
     energyBar(d.cal, target, d.tdee, false) +
@@ -1009,7 +1021,13 @@ function heroProgress(d, t) {
   var burned = burnedSoFar(d);
   var synced = d.active != null || d.exercise != null;
   var target = calorieTarget(d, t), burn = expectedBurn(d);
-  var eatCls = d.cal == null || target == null ? 'lead' : energyClass(d.cal, target, burn);
+  // Intake stays white: the bar and the line under it already say where it
+  // sits against the target, and the deficit beside it is what should catch
+  // the eye.
+  // The running deficit is the number worth watching: what you have burned so
+  // far, less what you have eaten. It is the whole point of the dashboard, so
+  // it sits beside the intake rather than being held back until midnight.
+  var run = burned != null && d.cal != null ? burned - d.cal : null;
   return '<div class="slab">' +
     '<div class="slab-top"><span class="lbl">Today · so far</span>' +
       (d.dayType ? '<span class="chip ' + d.dayType + '">' + d.dayType + '</span>' : '') +
@@ -1017,19 +1035,28 @@ function heroProgress(d, t) {
     '<div class="figs">' +
       (d.cal == null
         ? '<div class="fig lead"><b class="words">No food yet</b><small>nothing eaten logged today</small></div>'
-        : '<div class="fig ' + eatCls + '"><b>' + nf(d.cal) + '<span class="u">kcal</span></b><small>eaten so far</small></div>') +
-      (burned == null ? '' :
-      '<div class="fig lead"><b>≈' + nf(burned) + '<span class="u">kcal</span></b>' +
-        '<small>burned so far · ' + (synced ? 'resting burn to now + activity' : 'resting burn to now') + '</small></div>') +
+        : '<div class="fig lead"><b>' + nf(d.cal) + '<span class="u">kcal</span></b><small>eaten so far</small></div>') +
+      (run == null ? '' :
+      '<div class="fig big-deficit ' + (run < 0 ? 'bad' : 'good') + '"><b><span data-count="' + run + '">' +
+        signed(run) + '</span><span class="u">kcal</span></b>' +
+        '<small>' + (run < 0 ? 'surplus' : 'deficit') + ' so far today</small></div>') +
     '</div>' +
     (d.cal == null
       ? (target == null ? '' : '<div class="energy"><div class="energy-bal">Today\'s target ~' + nf(target) + ' kcal</div></div>')
       : energyBar(d.cal, target, burn, true)) +
+    (burned == null ? '' :
+      '<div class="burn-line">≈' + nf(burned) + ' kcal burned so far · ' +
+        (synced ? 'resting burn to now + activity' : 'resting burn to now') +
+        (burn != null && burn > burned ? ' · on pace for ~' + nf(burn) + ' by midnight' : '') + '</div>') +
     macroStats(d, t) +
     '<div class="energy-note">Today stays open until you close it with Claude, which logs the day type. ' +
       'Until then it is left out of the 7‑day average.' +
-      (target != null ? ' The target is ' + (100 - deficitPct(t)) + '% of your usual burn, a ' + deficitPct(t) +
-        '% deficit, and never below your BMR.' : '') + '</div>' +
+      (target == null ? ''
+        : burn != null && Math.round(burn * (1 - deficitPct(t) / 100)) < target
+          ? ' The target is normally ' + (100 - deficitPct(t)) + '% of the day\'s burn, but today it is held at your ' +
+            nf(target) + ' kcal BMR: a ' + deficitPct(t) + '% deficit on a day this quiet would mean eating below it.'
+          : ' The target is ' + (100 - deficitPct(t)) + '% of the day\'s burn, a ' + deficitPct(t) +
+            '% deficit, and never below your BMR.') + '</div>' +
   '</div>';
 }
 
@@ -1056,7 +1083,7 @@ function energyBar(eaten, target, burn, open) {
       : nf(-diff) + ' kcal over ' + (open ? 'today\'s' : 'your') + ' ' + tl + ' kcal target';
   }
   return '<div class="energy"><div class="energy-track">' +
-      '<div class="energy-fill ' + cls + '" style="width:' + clamp(eaten / top * 100, 0, 100).toFixed(1) + '%"></div>' +
+      '<div class="energy-fill ' + cls + '" style="width:0%" data-w="' + clamp(eaten / top * 100, 0, 100).toFixed(1) + '"></div>' +
       (target != null ? '<s style="left:' + clamp(target / top * 100, 0, 100).toFixed(1) + '%"></s>' : '') +
     '</div>' +
     (bal ? '<div class="energy-bal ' + cls + '">' + bal + '</div>' : '') +
@@ -1109,6 +1136,40 @@ function stat(name, value, cls, balance, frac, mark) {
     '<div class="mini"><i style="width:' + clamp(frac * 100, 0, 100).toFixed(1) + '%"></i>' +
       '<s style="left:' + clamp(mark * 100, 0, 100).toFixed(1) + '%"></s></div>' +
     '<span class="bal">' + esc(balance) + '</span></div>';
+}
+
+/* --- the one bit of motion in the whole page ---------------------------
+   The deficit is the number this exists to move, so on paint it counts up
+   and the energy bar fills. Only when the value has actually changed, so a
+   background refresh every ten minutes does not keep replaying it, and never
+   when the reader has asked for reduced motion. */
+var lastCounted = null;
+function paintHero(root) {
+  if (!root || !root.querySelectorAll) return;
+  var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var raf = window.requestAnimationFrame;
+
+  var bar = root.querySelector('.energy-fill[data-w]');
+  if (bar) {
+    var w = bar.getAttribute('data-w') + '%';
+    if (reduce || !raf) bar.style.width = w;
+    else raf(function () { bar.style.width = w; });
+  }
+
+  var el = root.querySelector('[data-count]');
+  if (!el) { lastCounted = null; return; }
+  var to = Number(el.getAttribute('data-count'));
+  var end = el.textContent;
+  if (!isFinite(to) || reduce || !raf || lastCounted === to) return;
+  lastCounted = to;
+  var t0 = null, dur = 850;
+  raf(function step(ts) {
+    if (t0 == null) t0 = ts;
+    var k = Math.min(1, (ts - t0) / dur);
+    if (k >= 1) { el.textContent = end; return; }
+    el.textContent = signed(Math.round(to * (1 - Math.pow(1 - k, 3))));
+    raf(step);
+  });
 }
 
 function heroVoid(d) {

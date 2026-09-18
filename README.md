@@ -91,9 +91,11 @@ projection. `BodyFatMass_kg` can be left blank and is derived from weight × BF%
 
 ## What it shows
 
-**Today** — the hero. What you've eaten against today's calorie target, the
-deficit once the day is closed, and protein and fat with their balance in
-words. Then the 7-day rolling average deficit and the countdown to 15% body
+**Today** — the hero. What you've eaten, **the deficit right beside it**, and
+protein and fat with their balance in words. While the day is open the deficit
+is the running one — what you've burned so far, less what you've eaten — and
+it counts up on paint, because it is the number the whole thing exists to
+move. It becomes the final deficit when Claude closes the day. Then the 7-day rolling average deficit and the countdown to 15% body
 fat side by side, then macros, then activity.
 
 **Activity** shows steps, active and exercise calories, and an **activity
@@ -134,6 +136,12 @@ rows are matched onto it. A day you didn't log is a gap: a dashed tick on the
 chart, a dotted bridge across the line, "No data logged" in the table. It never
 drops to zero, and it never silently closes up so a week with a hole looks
 continuous.
+
+**Today's burn is forecast, and it converges.** An open day's target needs a
+burn that hasn't happened yet. It is today's own activity so far, plus a
+shrinking share of what a usual day adds, so by late evening the forecast is
+today's real burn and a long walk moves the target the same evening rather
+than next week.
 
 **A calorie target you can act on.** The day's burn (TDEE) is not a target:
 eating all of it is a zero deficit. The target is the burn less
