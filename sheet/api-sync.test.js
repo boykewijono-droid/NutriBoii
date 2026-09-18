@@ -303,6 +303,46 @@ console.log('\n=== old raw records are pruned ===');
   eq('a 9-day-old record does not rewrite that old day', row(w, shift(TODAY, -9)), null);
 }
 
+console.log('\n=== no exercise session: a workout-shaped calorie record stands in ===');
+{
+  // the real case: a 1:20 walk arrives as one 446 kcal record from each app,
+  // with no exercise session, because that data type was not enabled
+  const w = world();
+  const r = call(w, payload({
+    steps: [rawSteps(TODAY, 7, 22, 13430)],
+    total_calories: [rawCal(TODAY, 21, 22.4, 446, SAMSUNG), rawCal(TODAY, 21, 22.4, 446, HSYNC)],
+  }));
+  eq('ExerciseCal filled from the workout record, counted once', row(w, TODAY).ExerciseCal, 446);
+  eq('reported as inferred, not measured', r.days[TODAY].exerciseInferred, true);
+}
+
+console.log('\n=== an all-day calorie stream is not inferred as exercise ===');
+{
+  const w = world();
+  const chunks = [];
+  for (let h = 0; h < 18; h++) chunks.push(rawCal(TODAY, h, h + 1, 95));
+  const r = call(w, payload({ total_calories: chunks }));
+  eq('18 hourly chunks are a stream: ExerciseCal stays blank', row(w, TODAY), null);
+  eq('nothing inferred', r.summary.indexOf('no daily totals changed') >= 0, true);
+}
+
+console.log('\n=== a real session still wins over the fallback ===');
+{
+  const w = world();
+  call(w, payload({
+    exercise: [session(TODAY, 18, 19)],
+    total_calories: [rawCal(TODAY, 18, 19, 300), rawCal(TODAY, 12, 13.5, 700)],
+  }));
+  eq('only the session calories count, not the other bounded record', row(w, TODAY).ExerciseCal, 300);
+}
+
+console.log('\n=== a too-short calorie record is not a workout ===');
+{
+  const w = world();
+  call(w, payload({ total_calories: [rawCal(TODAY, 12, 12.1, 40)] }));   // 6 minutes
+  eq('ignored', row(w, TODAY), null);
+}
+
 console.log('\n=== the app\'s Test Webhook button writes nothing ===');
 {
   const w = world();

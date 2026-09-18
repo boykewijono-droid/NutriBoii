@@ -486,7 +486,10 @@ function hsRollup(store, date) {
   var steps = best('steps');
   // Samsung Health maps a workout's calories to total-calorie records spanning
   // the session. Active-calorie records inside sessions are the fallback.
-  var exercise = sessions.length ? (best('total', sessionShare) || best('active', sessionShare)) : null;
+  // With no sessions at all, a workout-shaped calorie record stands in.
+  var exercise = sessions.length
+    ? (best('total', sessionShare) || best('active', sessionShare))
+    : hsWorkoutFallback(recs);
   var active = best('active');
   if (active && exercise && active.value <= exercise.value) active = null;   // workout-only, not all-day
   return {
@@ -495,12 +498,39 @@ function hsRollup(store, date) {
     activeCal: active ? active.value : null,
     exerciseCal: exercise ? exercise.value : null,
     sessions: sessions.length,
+    exerciseInferred: !!(exercise && exercise.inferred),
     origins: {
       steps: steps ? steps.origin : null,
       activeCal: active ? active.origin : null,
       exerciseCal: exercise ? exercise.origin : null
     }
   };
+}
+
+/** No exercise session arrived, but Samsung Health writes one total-calorie
+ *  record per workout: a bounded span of 10 minutes to 4 hours, one or two a
+ *  day. Those are the workout, so they fill ExerciseCal.
+ *
+ *  The guard is the record COUNT per origin. An app that streams calories in
+ *  hourly chunks would otherwise have its whole day counted as exercise, so
+ *  more than three qualifying records means it is a stream, not workouts, and
+ *  nothing is inferred. Records this rule cannot read stay blank rather than
+ *  becoming a guess. */
+function hsWorkoutFallback(recs) {
+  var byOrigin = {};
+  recs.forEach(function (r) {
+    if (r.type !== 'total') return;
+    var mins = (Date.parse(r.end) - Date.parse(r.start)) / 60000;
+    if (!(mins >= 10 && mins <= 240)) return;
+    (byOrigin[r.origin] = byOrigin[r.origin] || []).push(r);
+  });
+  var top = null;
+  Object.keys(byOrigin).forEach(function (o) {
+    if (byOrigin[o].length > 3) return;
+    var sum = byOrigin[o].reduce(function (s, r) { return s + r.value; }, 0);
+    if (!top || sum > top.value) top = { value: Math.round(sum), origin: o, inferred: true };
+  });
+  return top;
 }
 
 function hsSgtDate(iso) {
