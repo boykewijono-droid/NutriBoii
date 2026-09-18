@@ -1075,9 +1075,19 @@ function heroProgress(d, t) {
         ? '<div class="fig lead"><b class="words">No food yet</b><small>nothing eaten logged today</small></div>'
         : '<div class="fig lead"><b>' + nf(d.cal) + '<span class="u">kcal</span></b><small>eaten so far</small></div>') +
       (run == null ? '' :
-      '<div class="fig big-deficit ' + (run < 0 ? 'bad' : 'good') + '"><b><span data-count="' + run + '">' +
-        signed(run) + '</span><span class="u">kcal</span></b>' +
-        '<small>' + (run < 0 ? 'surplus' : 'deficit') + ' so far today</small></div>') +
+      // Resting burn accrues by the minute while food arrives in lumps, so a
+      // breakfast puts this number below zero every morning. That is not a
+      // surplus — the day has barely started. Early on it reads as being
+      // ahead of the burn, in amber; only later in the day is a negative
+      // number a real surplus.
+      (function () {
+        var early = dayFraction() < 0.6;
+        var cls = run >= 0 ? 'good' : early ? 'caution' : 'bad';
+        var label = run >= 0 ? 'deficit so far today'
+                  : early ? 'eaten ahead of burn so far' : 'surplus so far today';
+        return '<div class="fig big-deficit ' + cls + '"><b><span data-count="' + run + '">' +
+          signed(run) + '</span><span class="u">kcal</span></b><small>' + label + '</small></div>';
+      })()) +
     '</div>' +
     (d.cal == null
       ? (target == null ? '' : '<div class="energy"><div class="energy-bal">Today\'s target ~' + nf(target) + ' kcal</div></div>')
@@ -1136,6 +1146,12 @@ function energyBar(eaten, target, burn, open, basis) {
 /** Estimated calories burned from midnight until now: resting burn for the
  *  share of the day that has passed, plus the activity synced so far, using
  *  the same weights as the daily target. */
+/** How much of the Singapore day has passed, 0 to 1. */
+function dayFraction() {
+  var c = sgtClock();
+  return (c.h * 60 + c.m) / 1440;
+}
+
 function burnedSoFar(d) {
   if (d.bmr == null) return null;
   var c = sgtClock();
@@ -1214,21 +1230,14 @@ function paintHero(root) {
 }
 
 function heroVoid(d) {
-  // the last day with FOOD logged: a row the phone sync created holds only steps
-  var last = null;
-  for (var i = M.dates.length - 1; i >= 0; i--) {
-    if (M.dates[i] < M.today && M.days[M.dates[i]].hasIntake) { last = M.dates[i]; break; }
-  }
-  var lastD = last ? M.days[last] : null;
+  // No "last logged" line here: lastDayStrip() sits directly underneath and
+  // says the same thing with more in it.
   return '<div class="slab void">' +
     '<div class="slab-top"><span class="lbl">' + esc(fmtDay(M.today)) + ' · SGT</span></div>' +
     '<div class="figs"><div class="fig lead"><b style="font-size:clamp(30px,5.4vw,46px)">No data logged</b>' +
       '<small style="margin-top:12px">' + (d.logged
         ? 'A row exists for today, but no calories yet.'
         : 'Nothing written for today yet — talk to Claude and the row appears here straight away.') + '</small></div></div>' +
-    (lastD ? '<div class="energy"><div class="energy-marks" style="border-top:1px solid var(--slab-line);padding-top:12px">' +
-      '<span>Last logged · ' + esc(fmtDay(last)) + '</span><span>' + nf(lastD.cal) + ' kcal' +
-        (lastD.deficit != null ? ' · ' + signed(lastD.deficit) + (lastD.deficit < 0 ? ' surplus' : ' deficit') : '') + '</span></div></div>' : '') +
   '</div>';
 }
 
