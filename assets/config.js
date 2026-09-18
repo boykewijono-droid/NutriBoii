@@ -47,6 +47,21 @@ window.NUTRIBOII_CONFIG = {
      Used to recompute the target when the Sheet's TDEE_Target cell is blank. */
   tdee: { exerciseFactor: 0.7, incidentalFactor: 0.5 },
 
+  /* How active a day was, worked out from the day's own numbers so nobody has
+     to answer a question about it:
+       High   — a workout, or a gym day logged: gym, hiking, running, tennis
+       Medium — out and about: an office day, a full day on your feet
+       Low    — a desk day at home
+     A day is High if ANY of the "high" tests pass, Medium if any "med" test
+     passes, otherwise Low. A day with no activity logged at all stays blank. */
+  activityLevels: {
+    highExerciseCal: 300,   // a real session, not a walk
+    highActiveCal:   700,
+    medExerciseCal:  100,
+    medActiveCal:    400,
+    medSteps:       7000
+  },
+
   rollingWindowDays: 7,     // the rolling-average deficit window
 
   /* Days of InBody history the pace projection fits over. Scans are

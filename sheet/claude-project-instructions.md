@@ -74,6 +74,10 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
    separate project, so you will not know it and should not ask twice. If he
    happens to mention `Day 2`, record that instead; otherwise `Yes`/`No`.
 
+   Never ask how active his day was. The dashboard works that out from the
+   synced numbers and shows it as **High / Medium / Low**: High for a workout
+   or a gym day, Medium for a day out and about, Low for a desk day at home.
+
 7. **One row per date.** If a row already exists for today, *update it* rather
    than appending a second. He often logs breakfast in the morning and dinner
    at night, and two rows for one date will break the calendar matching.

@@ -510,6 +510,34 @@ function targetRule(t) {
   return (100 - deficitPct(t)) + '% of burn, never below BMR';
 }
 
+/* --- how active the day was ------------------------------------------- */
+/** High / Medium / Low from what the day actually holds, so nobody has to
+ *  answer a question about it. A real workout (or a logged gym day) is High;
+ *  an out-and-about day is Medium; a desk day at home is Low. Thresholds sit
+ *  in config.activityLevels. Returns null when nothing is known — a day with
+ *  no activity logged is not a "Low" day, it is an unknown one. */
+function activityLevel(d) {
+  var L = CFG.activityLevels || {};
+  var hEx = L.highExerciseCal == null ? 300 : L.highExerciseCal;
+  var hAc = L.highActiveCal == null ? 700 : L.highActiveCal;
+  var mEx = L.medExerciseCal == null ? 100 : L.medExerciseCal;
+  var mAc = L.medActiveCal == null ? 400 : L.medActiveCal;
+  var mSt = L.medSteps == null ? 7000 : L.medSteps;
+  var gym = gymState(d) === 'yes';
+  if (d.exercise == null && d.active == null && d.steps == null && !gym) return null;
+
+  var why = [];
+  if (gym) why.push(gymLabel(d) === 'Yes' ? 'gym' : String(gymLabel(d)).toLowerCase());
+  if (d.exercise) why.push(nf(d.exercise) + ' kcal exercise');
+  if (d.steps != null) why.push(nf(d.steps) + ' steps');
+  if (d.active != null && !d.exercise) why.push(nf(d.active) + ' kcal active');
+
+  var high = gym || (d.exercise != null && d.exercise >= hEx) || (d.active != null && d.active >= hAc);
+  var med  = (d.exercise != null && d.exercise >= mEx) || (d.active != null && d.active >= mAc) ||
+             (d.steps != null && d.steps >= mSt);
+  return { level: high ? 'High' : med ? 'Medium' : 'Low', why: why.join(' · ') };
+}
+
 /** Rolling average deficit over the last N calendar days, logged days only. */
 function rollingDeficit(endDate, n) {
   var vals = [], goals = [], span = calendarRange(addDays(endDate, -(n - 1)), endDate);
@@ -937,7 +965,11 @@ function renderToday() {
          cell('Steps', d.steps == null ? null : nf(d.steps), null, null, d.inProgress && d.steps != null ? 'so far today' : null) +
          cell('Active', d.active == null ? null : nf(d.active), 'kcal', null, d.inProgress && d.active != null ? 'so far today' : null) +
          cell('Exercise', d.exercise == null ? null : nf(d.exercise), 'kcal', null, d.inProgress && d.exercise != null ? 'so far today' : null) +
-         cell('Gym', gymLabel(d) == null ? null : esc(gymLabel(d)), null) +
+         (function () {
+           var a = activityLevel(d);
+           return cell('Activity', a && a.level, null, a && a.level === 'High' ? 'good' : '',
+                       a ? (d.inProgress ? 'So far today · ' : '') + a.why : null);
+         })() +
        '</div></div>';
 
   if (d.notes) {
@@ -1528,6 +1560,7 @@ function openDay(date) {
       row('Steps', d.steps, '') +
       row('Active calories', d.active, 'kcal') +
       row('Exercise calories', d.exercise, 'kcal') +
+      row('Activity level', (function () { var a = activityLevel(d); return a && a.level; })(), '') +
       row('Gym', gymLabel(d), '') +
       '</div>';
     if (d.fatState === 'over') {
