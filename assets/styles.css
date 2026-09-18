@@ -178,6 +178,8 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
   font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
   border:1px solid rgba(244,241,232,.26);padding:3px 9px;color:var(--slab-fg);
 }
+.chip.auto{border-style:dashed}        /* worked out, not logged by hand */
+.dt.auto{border-style:dashed}
 .chip.Treat{border-color:var(--accent);color:var(--accent)}
 .chip.Gym{border-color:var(--slab-fg);font-weight:500}
 
@@ -232,6 +234,22 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .stat.good .v,.stat.good .bal{color:var(--slab-good)}  .stat.good .mini i{background:var(--slab-good)}
 .stat.bad .v,.stat.bad .bal{color:var(--slab-bad)}  .stat.bad .mini i{background:var(--slab-bad)}
 .stat.caution .v,.stat.caution .bal{color:var(--slab-amber)}  .stat.caution .mini i{background:var(--slab-amber)}
+
+/* the finished day, in one tappable line under the hero */
+.lastday{
+  display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  background:var(--paper);border:1px solid var(--line);border-top:0;
+  padding:14px clamp(16px,2vw,24px);cursor:pointer;transition:background .12s;
+}
+.lastday:hover{background:var(--paper-2)}
+.lastday .lbl{flex:0 0 auto}
+.lastday b{font-family:var(--f-display);font-size:23px;font-weight:500;letter-spacing:-.02em;line-height:1}
+.lastday b .u{font-family:var(--f-mono);font-size:.4em;color:var(--ink-45);margin-left:.5em;letter-spacing:.03em}
+.lastday b.good{color:var(--good)}
+.lastday b.caution{color:var(--amber)}
+.lastday b.bad{color:var(--flag)}
+.lastday .sub{font-size:11px;color:var(--ink-45);margin-left:auto}
+@media (max-width:600px){ .lastday .sub{margin-left:0;flex-basis:100%} }
 
 /* ==========================  quiet blocks  =============================== */
 .grid{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:1px}

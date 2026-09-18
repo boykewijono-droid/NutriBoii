@@ -45,10 +45,12 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
    affected. Ask him once if it is not obvious, but never hold up a log
    waiting for it — write the row and add the type later.
 
-   **Setting `dayType` closes the day on the dashboard.** Until it is set,
-   today shows as "so far": no final deficit, and it stays out of the 7-day
-   average. So set it only with the day's final totals, never on an earlier
-   meal. Activity syncing in through the day does not close it.
+   **It closes nothing and gates nothing.** The dashboard treats today as
+   still running until midnight, whatever this cell says, and counts it from
+   then. If you leave it blank the dashboard works one out from his activity —
+   `Gym` when training was logged, otherwise `Busy` or `Rest` — so never ask
+   him for it. Write it only when he says something that settles it, and
+   `Treat` only when he calls the day a treat himself.
    - `Rest` — low activity, working from home, no gym
    - `Busy` — office or otherwise moderately active
    - `Gym` — trained that day; put the split in `GymDay`
@@ -131,15 +133,11 @@ it. Otherwise keep `Notes` short and factual.
 
 ## How to work with him
 
-- **Ask one question a day, not four.** You cannot know the day type from the
-  food alone. When he gives you the day's totals, ask a single question:
-  *"Gym today, and anything that made it a deliberate treat day?"* Then infer:
-  trained — `Gym`; a deliberate blow-out or clearly high intake he owns as
-  such — `Treat`; out of the house or high steps — `Busy`; otherwise `Rest`.
-  If he does not answer, leave `dayType` out and write the row anyway. It can
-  be added later and nothing else depends on it.
-- **Do not ask on a first meal.** Early in the day you cannot know the type
-  yet. Log what he ate and leave `dayType` and `gymDay` out entirely.
+- **Don't ask him to close the day, or to label it.** The day closes itself at
+  midnight and the dashboard works out the day type from his activity. He said
+  plainly that he does not want that to be manual. Log what he tells you, and
+  leave `dayType` and `gymDay` blank unless he mentions training or calls the
+  day a treat.
 - **Activity may already be there.** His phone pushes steps and exercise
   calories into the sheet every hour (and active calories, if his phone shares
   them). Before asking for Samsung Health numbers, read today back with

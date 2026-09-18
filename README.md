@@ -152,14 +152,23 @@ below BMR on an ordinary day, and a gym day's bigger burn earns more food.
 target is forecast from your usual burn over the last two weeks, never less
 than what today has already burned, and shown with a "~".
 
-**Today stays open until you close it.** Food arrives meal by meal and, with
-the phone sync running, activity arrives every hour, so neither means the day
-is done. The close is the day type, which Claude logs once with your final
-totals. Until then the Today view shows what you've eaten, an estimate of what
-you've burned *so far*, and protein and fat with their balance, but no final
-deficit. Today stays out of the 7-day and Week averages, and low protein reads
-"g to go" rather than a warning. Fat stays live all day, because it only ever
-goes up. Once the day type is logged, or midnight passes, it's a normal day.
+**Today closes itself at midnight.** Nothing to close by hand. Food arrives
+meal by meal and activity every hour, so while the date is today both halves
+of the deficit are partial: the Today view shows what you've eaten, an
+estimate of what you've burned *so far*, the running deficit between them, and
+protein and fat with their balance — but today stays out of the 7-day and Week
+averages, and low protein reads "g to go" rather than a warning. Fat is live
+all day, because it only ever goes up. At midnight the day is done and counts
+with whatever was logged; a late meal logged after midnight still lands on its
+own date and corrects it.
+
+It used to close when the day type was logged, which turned a label into a
+chore and left an unlabelled day open for ever. So the **day type is worked out
+when nobody writes one**: `Gym` if training was logged, otherwise `Busy` or
+`Rest` from the activity level, shown with a dashed border to say it was
+derived. `Treat` is never inferred — a deliberate higher-calorie day is a
+decision, not something to read off a big dinner. The day that just finished
+sits under the hero as one tappable line with its final deficit.
 
 ---
 

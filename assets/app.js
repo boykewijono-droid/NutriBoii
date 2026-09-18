@@ -398,14 +398,16 @@ function buildDays(rows, scans, targets, today) {
     // A day with no calories logged isn't a logged day for averaging purposes.
     d.hasIntake = d.cal != null;
 
-    // Today stays OPEN until the day type is logged. Food arrives meal by meal
-    // and, once the phone sync is running, activity arrives every hour, so
-    // activity being present no longer means the day is finished. Claude asks
-    // for the day type once, with the day's final totals: that is the close.
-    // Until then both halves of the deficit are partial, and treating the day
-    // as finished put a green "+900" in the hero after breakfast and inflated
-    // the 7-day average. A past date is closed by definition.
-    d.inProgress = date === today && !d.dayType;
+    // Today is open until midnight, full stop. Nothing to close by hand.
+    //
+    // It used to close when the day type was logged, which meant a day nobody
+    // labelled stayed "open" for ever and never reached the 7-day average —
+    // and it made a label into a chore. The clock is the honest signal: while
+    // the date is today, food is still arriving meal by meal and activity
+    // every hour, so both halves of the deficit are partial. At midnight the
+    // day is done and counts with whatever was logged; a late meal logged
+    // after midnight still lands on its own date and corrects it.
+    d.inProgress = date === today;
     d.countable  = d.hasIntake && !d.inProgress;
 
     // Fat has three states, not two. A hard line made 72g look as bad as
@@ -458,6 +460,21 @@ function gymState(d) {
   if (g) return /^(?:no|n|none|false|0|rest|-|—)$/.test(g) ? 'no' : 'yes';
   return d.dayType === 'Gym' ? 'yes' : null;
 }
+/** The day's type, worked out when nobody wrote one. Gym only if training was
+ *  logged — that is the one thing the numbers cannot tell. Otherwise it
+ *  follows the activity level, and `Treat` is left alone: a deliberate
+ *  higher-calorie day is a decision, not something to infer from a big
+ *  dinner. Returns {type, auto}. */
+function dayType(d) {
+  if (d.dayType) return { type: d.dayType, auto: false };
+  if (gymState(d) === 'yes') return { type: 'Gym', auto: true };
+  var a = activityLevel(d);
+  if (!a) return null;
+  return { type: a.level === 'Low' ? 'Rest' : 'Busy', auto: true };
+}
+/** Just the label, for filters and tooltips. */
+function dayTypeName(d) { var x = dayType(d); return x && x.type; }
+
 /** What to display: the split name when there is one, otherwise Yes / No. */
 function gymLabel(d) {
   var st = gymState(d);
@@ -894,7 +911,7 @@ document.addEventListener('mousemove', function (e) {
 function dayTip(d) {
   if (!d.logged) return '<b>' + esc(fmtDay(d.date)) + '</b><br><em>No data logged</em>';
   var s = '<b>' + esc(fmtDay(d.date)) + '</b>';
-  if (d.dayType) s += ' <em>' + esc(d.dayType) + '</em>';
+  if (dayTypeName(d)) s += ' <em>' + esc(dayTypeName(d)) + '</em>';
   var target = calorieTarget(d, M.targets);
   if (d.inProgress) {
     s += '<br>' + (d.cal == null ? '<em>no food logged yet</em>' : nf(d.cal) + ' kcal <em>so far</em>');
@@ -967,11 +984,14 @@ function renderToday() {
   var t = M.targets, d = getDay(M.today);
   var host = $('#view-today'), h = '';
 
-  // An open today with no food yet still has something to show once the phone
-  // has synced activity into it: the burn so far and the day's target.
-  h += !d.logged ? heroVoid(d)
-     : d.inProgress ? heroProgress(d, t)
-     : d.hasIntake ? heroSlab(d, t) : heroVoid(d);
+  // Today is always the running card: it closes itself at midnight, so the
+  // "complete" version could never appear here. A row holding only synced
+  // activity still gets it; only a missing row falls back to the void card.
+  h += d.logged ? heroProgress(d, t) : heroVoid(d);
+
+  // The finished day, in one line, so closing the day still feels like
+  // something. Tapping it opens that day in full.
+  h += lastDayStrip(t);
 
   // The two numbers that actually predict progress, given side by side.
   var roll = rollingDeficit(M.today, CFG.rollingWindowDays || 7);
@@ -1001,27 +1021,34 @@ function renderToday() {
   paintHero(host);
 }
 
-/** A finished day: eaten against burned, the deficit against the goal. */
-function heroSlab(d, t) {
-  var goal = deficitGoal(d, t), target = calorieTarget(d, t);
-  // Colour carries the verdict: lime met the goal, amber a deficit short of
-  // it, red a surplus.
-  var defCls = d.deficit == null ? '' : d.deficit < 0 ? 'bad' : goal == null || d.deficit >= goal ? 'good' : 'caution';
-  return '<div class="slab">' +
-    '<div class="slab-top"><span class="lbl">' + esc(relDay(d.date)) + ' · complete</span>' +
-      (d.dayType ? '<span class="chip ' + d.dayType + '">' + d.dayType + '</span>' : '') +
-    '</div>' +
-    '<div class="figs">' +
-      '<div class="fig lead"><b>' + nf(d.cal) + '<span class="u">kcal</span></b>' +
-        '<small>' + (d.tdee ? 'eaten, of ' + nf(d.tdee) + ' burned' : 'eaten') + '</small></div>' +
-      (d.deficit == null ? '' :
-      '<div class="fig big-deficit ' + defCls + '"><b><span data-count="' + d.deficit + '">' +
-        signed(d.deficit) + '</span><span class="u">kcal</span></b>' +
-        '<small>' + (d.deficit < 0 ? 'surplus today' : 'deficit today') + (goal != null ? ' · goal ' + signed(goal) : '') + '</small></div>') +
-    '</div>' +
-    energyBar(d.cal, target, d.tdee, false, targetBasis(d, t)) +
-    macroStats(d, t) +
-  '</div>';
+/** The day-type chip, dotted when it was worked out rather than logged. */
+function chip(d) {
+  var x = dayType(d);
+  if (!x) return '';
+  return '<span class="chip ' + x.type + (x.auto ? ' auto' : '') + '"' +
+    (x.auto ? ' title="Worked out from the day&#39;s activity"' : '') + '>' + x.type + '</span>';
+}
+
+/** The last finished day, as one tappable line: its deficit against that
+ *  day's goal, and what it took. The Today card can no longer show a finished
+ *  day, because midnight rolls it over into the next one. */
+function lastDayStrip(t) {
+  var date = null;
+  for (var i = M.dates.length - 1; i >= 0; i--) {
+    if (M.dates[i] < M.today && M.days[M.dates[i]].hasIntake) { date = M.dates[i]; break; }
+  }
+  if (!date) return '';
+  var p = M.days[date], goal = deficitGoal(p, t), target = calorieTarget(p, t);
+  var cls = p.deficit == null ? '' : p.deficit < 0 ? 'bad' : goal == null || p.deficit >= goal ? 'good' : 'caution';
+  var bits = [];
+  if (p.cal != null) bits.push(nf(p.cal) + ' eaten');
+  if (p.tdee != null) bits.push(nf(p.tdee) + ' burned');
+  if (target != null) bits.push('target ' + nf(target));
+  if (goal != null) bits.push('goal ' + signed(goal));
+  return '<div class="lastday" data-day="' + date + '" tabindex="0" role="button">' +
+    '<span class="lbl">' + esc(relDay(date)) + (dayTypeName(p) ? ' \u00b7 ' + esc(dayTypeName(p)) : '') + ' \u00b7 done</span>' +
+    '<b class="' + cls + '">' + signed(p.deficit) + '<span class="u">kcal</span></b>' +
+    '<span class="sub">' + esc(bits.join(' \u00b7 ')) + '</span></div>';
 }
 
 /** Today while it is still open. Shows what is actually known: what has been
@@ -1041,7 +1068,7 @@ function heroProgress(d, t) {
   var run = burned != null && d.cal != null ? burned - d.cal : null;
   return '<div class="slab">' +
     '<div class="slab-top"><span class="lbl">Today · so far</span>' +
-      (d.dayType ? '<span class="chip ' + d.dayType + '">' + d.dayType + '</span>' : '') +
+      chip(d) +
     '</div>' +
     '<div class="figs">' +
       (d.cal == null
@@ -1060,8 +1087,8 @@ function heroProgress(d, t) {
         (synced ? 'resting burn to now + activity' : 'resting burn to now') +
         (burn != null && burn > burned ? ' · on pace for ~' + nf(burn) + ' by midnight' : '') + '</div>') +
     macroStats(d, t) +
-    '<div class="energy-note">Today stays open until you close it with Claude, which logs the day type. ' +
-      'Until then it is left out of the 7‑day average.' +
+    '<div class="energy-note">Today counts in the 7‑day average from midnight, when the day is done. ' +
+      'Nothing to close by hand.' +
       (target == null ? ''
         : burn != null && Math.round(burn * (1 - deficitPct(t) / 100)) < target
           ? ' The target is normally ' + (100 - deficitPct(t)) + '% of the day\'s burn, but today it is held at your ' +
@@ -1210,7 +1237,7 @@ function rollingCell(r) {
   if (r.avg == null) {
     return '<div class="cell hl"><span class="lbl">' + r.of + '-day average deficit</span>' +
       '<span class="big none">—</span><span class="sub">' +
-      (r.pendingToday ? 'Today is still open. It counts once you close it with Claude.'
+      (r.pendingToday ? 'Today is still running. It counts from midnight.'
                       : 'No finished days in the last ' + r.of + '.') + '</span></div>';
   }
   var good = r.avg >= 0;
@@ -1219,7 +1246,7 @@ function rollingCell(r) {
     '<span class="sub">' + (goal != null ? 'Goal ' + signed(goal) + ' (' + deficitPct(M.targets) + '% of burn). ' : '') +
       'Across ' + r.n + ' finished day' + (r.n === 1 ? '' : 's') + ' of the last ' + r.of + '. ' +
       (good ? '≈ ' + nf(r.avg * 7 / 7700, 2) + ' kg of fat per week.' : 'Currently in surplus.') +
-      (r.pendingToday ? ' Today counts once you close it with Claude.' : '') +
+      (r.pendingToday ? ' Today counts from midnight.' : '') +
     '</span></div>';
 }
 
@@ -1407,7 +1434,7 @@ function dayTable(days) {
     }
     return '<tr class="day' + (d.date === M.today ? ' today' : '') + '" data-day="' + d.date + '" tabindex="0">' +
       '<td>' + when + '</td>' +
-      '<td class="opt">' + (d.dayType ? '<span class="dt ' + d.dayType + '">' + d.dayType + '</span>' : '<span class="dash">—</span>') + '</td>' +
+      '<td class="opt">' + (function () { var x = dayType(d); return x ? '<span class="dt ' + x.type + (x.auto ? ' auto' : '') + '">' + x.type + '</span>' : '<span class="dash">—</span>'; })() + '</td>' +
       '<td><b>' + nf(d.cal) + '</b></td>' +
       (d.inProgress
         ? '<td><span class="dash">so far</span></td>'
@@ -1591,7 +1618,7 @@ function paintHistory() {
   var all = calendarRange(M.first, M.today).map(getDay);
   var rows = all.filter(function (d) {
     if (filter.flagged && !d.flagged) return false;
-    if (filter.type !== 'All' && d.dayType !== filter.type) return false;
+    if (filter.type !== 'All' && dayTypeName(d) !== filter.type) return false;
     return true;
   });
   var loggedN = rows.filter(function (d) { return d.hasIntake; }).length;
@@ -1611,7 +1638,7 @@ function openDay(date) {
   tipOff();
   lastFocus = document.activeElement;
   var h = '<div class="sheet-top"><div><h2 id="dayTitle">' + esc(fmtDay(date, { weekday: 'long', day: 'numeric', month: 'long' })) + '</h2>' +
-    '<span class="lbl">' + esc(relDay(date)) + (d.dayType ? ' · ' + d.dayType : '') + '</span></div>' +
+    '<span class="lbl">' + esc(relDay(date)) + (dayTypeName(d) ? ' · ' + dayTypeName(d) + (dayType(d).auto ? ' (worked out)' : '') : '') + '</span></div>' +
     '<button type="button" data-act="closeDay" aria-label="Close">✕</button></div>';
 
   if (!d.logged) {
@@ -1625,7 +1652,10 @@ function openDay(date) {
           row('Burned (TDEE)', 'day still open', '') + row('Deficit', 'day still open', '')
         : row('Calorie target', target, 'kcal') +
           row('Burned (TDEE)', d.tdee, 'kcal') +
-          row('Deficit', d.deficit, 'kcal', d.deficit != null && d.deficit < 0)) +
+          // signed, like everywhere else: a bare "232" reads as a quantity,
+          // not as a day that came out ahead
+          row('Deficit', d.deficit == null ? null : signed(d.deficit) + ' kcal', '',
+              d.deficit != null && d.deficit < 0)) +
       row('BMR', d.bmr, 'kcal') +
       '<h3>Macros</h3>' +
       row('Protein', d.protein, 'g', d.proteinWarn) +
