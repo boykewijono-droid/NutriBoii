@@ -97,9 +97,19 @@ works exactly the same with every step here.
 In the app's **Data Types**, switch on the same four: **Steps**, **Active
 Calories**, **Total Calories**, **Exercise Sessions**.
 
-Leave each **Resolution** at its default: Steps **Daily**, Active Calories
-**Daily**, Total Calories **Full**. The API is built for those, though it also
-handles the other options correctly.
+Then set **Resolution → Full** for **Steps** and **Active Calories**. Total
+Calories is already Full by default.
+
+This matters. On the **Daily** default the app sends one figure per day, which
+Health Connect has already merged across every app that writes steps — and
+there are usually several. On one real phone that was Samsung Health (2,881),
+Android's own step counter (2,307) and Health Sync (283), and the merged
+figure came out at 2,375: a number that matched nothing and read lower than
+the phone. Full sends each app's own records, so NutriBoii takes the largest
+single source — Samsung Health — and ignores the rest.
+
+Don't use the minute options. Those bundle every app's records together before
+sending, which locks the double-count in.
 
 ### 5. Add NutriBoii as the webhook
 
@@ -143,7 +153,7 @@ Samsung phones kill background apps aggressively, and a sleeping app doesn't syn
 
 The first sync looks back 48 hours. Within a few seconds:
 
-- **Daily Log** has **Steps** for today and yesterday. The day before that is
+- **Daily Log** +y before that is
   skipped on purpose: the 48-hour window starts part-way through it, so its
   count would be short.
 - a hidden tab called **Activity Sync** appears (Sheet → View → Hidden sheets).
@@ -160,9 +170,12 @@ The app's **Logs** screen shows each post it made.
 
 ## How the numbers behave
 
-- **Hourly totals replace, they don't add.** The app sends today's running
-  total every hour: 3,000 steps at 9:00, then 4,200 at 10:00. The Sheet shows
-  4,200, not 7,200. Sending the same data twice changes nothing.
+- **One source per day, never the sum.** Several apps write steps into Health
+  Connect. For each day and each measure, the single app with the largest
+  total is used, so two apps' counts are never added together.
+- **Re-sent totals replace, they don't add.** If the phone sends a running
+  daily total, 3,000 steps at 9:00 and 4,200 at 10:00, the Sheet shows 4,200,
+  not 7,200. Sending the same data twice changes nothing.
 - **Days follow Singapore time.** A walk at 00:30 counts for the new day.
 - **ExerciseCal counts only calories inside a workout**, so an all-day calorie
   total is never mistaken for exercise. The same workout arriving from two apps
