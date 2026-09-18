@@ -519,6 +519,17 @@ function targetRule(t) {
   return (100 - deficitPct(t)) + '% of burn, never below BMR';
 }
 
+/** Where THIS day's target came from, in a few words: the percentage of the
+ *  burn, or the BMR floor when that is what set it. Without this a target
+ *  that lands near the BMR reads as if it were the BMR. */
+function targetBasis(d, t) {
+  var burn = expectedBurn(d), target = calorieTarget(d, t);
+  if (burn == null || target == null) return null;
+  return Math.round(burn * (1 - deficitPct(t) / 100)) >= target
+    ? (100 - deficitPct(t)) + '% of ' + (d.inProgress ? '~' : '') + nf(burn) + ' burn'
+    : 'your BMR, the floor';
+}
+
 /* --- how active the day was ------------------------------------------- */
 /** High / Medium / Low from what the day actually holds, so nobody has to
  *  answer a question about it. A real workout (or a logged gym day) is High;
@@ -1008,7 +1019,7 @@ function heroSlab(d, t) {
         signed(d.deficit) + '</span><span class="u">kcal</span></b>' +
         '<small>' + (d.deficit < 0 ? 'surplus today' : 'deficit today') + (goal != null ? ' · goal ' + signed(goal) : '') + '</small></div>') +
     '</div>' +
-    energyBar(d.cal, target, d.tdee, false) +
+    energyBar(d.cal, target, d.tdee, false, targetBasis(d, t)) +
     macroStats(d, t) +
   '</div>';
 }
@@ -1043,7 +1054,7 @@ function heroProgress(d, t) {
     '</div>' +
     (d.cal == null
       ? (target == null ? '' : '<div class="energy"><div class="energy-bal">Today\'s target ~' + nf(target) + ' kcal</div></div>')
-      : energyBar(d.cal, target, burn, true)) +
+      : energyBar(d.cal, target, burn, true, targetBasis(d, t))) +
     (burned == null ? '' :
       '<div class="burn-line">≈' + nf(burned) + ' kcal burned so far · ' +
         (synced ? 'resting burn to now + activity' : 'resting burn to now') +
@@ -1071,7 +1082,7 @@ function energyClass(eaten, target, burn) {
  *  track runs to the burn (today's is a forecast), so the gap between the
  *  target mark and the end is the deficit goal. Only a finished day labels
  *  the burn: today's forecast is already in the note below. */
-function energyBar(eaten, target, burn, open) {
+function energyBar(eaten, target, burn, open, basis) {
   if (eaten == null || (target == null && burn == null)) return '';
   var top = Math.max(burn || 0, target || 0, eaten) * (burn == null ? 1.15 : 1);
   var cls = energyClass(eaten, target, burn);
@@ -1081,6 +1092,9 @@ function energyBar(eaten, target, burn, open) {
     bal = diff >= 0
       ? nf(diff) + ' kcal ' + (open ? 'left of' : 'under') + ' ' + (open ? 'today\'s' : 'your') + ' ' + tl + ' kcal target'
       : nf(-diff) + ' kcal over ' + (open ? 'today\'s' : 'your') + ' ' + tl + ' kcal target';
+    // Say where the target came from. Without it, a target near the BMR reads
+    // as if it WERE the BMR, and nothing on screen says otherwise.
+    if (basis) bal += ' · ' + basis;
   }
   return '<div class="energy"><div class="energy-track">' +
       '<div class="energy-fill ' + cls + '" style="width:0%" data-w="' + clamp(eaten / top * 100, 0, 100).toFixed(1) + '"></div>' +

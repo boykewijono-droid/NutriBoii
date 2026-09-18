@@ -111,6 +111,19 @@ When `Fat_g` goes over the 70 g limit, **name the foods that caused it** in
 
 Write it plainly, like `fat over from chocolate + cashews + olive oil`.
 
+**Log each meal as a timestamped line of ten words or fewer.** He tells you
+what he is eating as he eats it, so `Notes` is the day's food diary. One line
+per meal, the time he told you, then the food, short:
+
+```
+11:23 PM soto madura + egg, sambal, 3 crackers, chicken satay
+ 1:10 PM char kway teow, iced kopi
+```
+
+Keep the food words themselves intact — the dashboard reads this field for
+what pushed fat up — but drop everything else: no "he had", no adjectives, no
+brand names. When fat goes over, add the `fat over from ...` line as well.
+
 The pattern worth catching: fat usually gets blown by stacking two or three fat
 sources in one day rather than by one big item. Naming them is the whole point
 — it makes the log something that breaks the habit instead of just recording
