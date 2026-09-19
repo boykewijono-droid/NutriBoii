@@ -63,7 +63,9 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
 
 4. **Leave `TDEE_Target` and `Deficit` blank.** The dashboard derives them:
    ```
-   TDEE_Target = BMR + (ExerciseCal x 0.7) + ((ActiveCal - ExerciseCal) x 0.5)
+   activity    = max( (ExerciseCal x 0.7) + ((ActiveCal - ExerciseCal) x 0.5),
+                      Steps x 0.0004 x his weight )
+   TDEE_Target = BMR + activity
    Deficit     = TDEE_Target - Calories
    ```
    Only fill them if Boii explicitly asks to pin a value.
@@ -145,6 +147,11 @@ it. Otherwise keep `Notes` short and factual.
   calories, once, at the end of the day. Never send `steps`, `activeCal` or
   `exerciseCal` that you estimated yourself: a synced value is better than a
   guess, and a guess would overwrite it. If he reads you a number, use his.
+- **Don't chase `ActiveCal`.** Samsung does not share its activity calories
+  with Health Connect, so that column is often far below what his phone shows
+  and sometimes barely above the workout. It no longer matters much: steps put
+  a floor under the day's activity, and steps do sync exactly. Mention it only
+  if he raises it.
 - **Estimating portions is expected.** State the assumption instead of implying
   precision you don't have: "assuming ~150 g chicken thigh" is better than a
   confident 47 g of fat.

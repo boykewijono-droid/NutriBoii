@@ -107,6 +107,12 @@ const at = (ymd, h, extraMs) => {
   return new Date(Date.UTC(y, m - 1, d) + (h - 8) * 3600000 + (extraMs || 0)).toISOString();
 };
 
+/** the day's activity above resting: calorie figures, floored by steps */
+const WEIGHT = 75.9;                       // the scan in world()
+const activityBurn = (steps, ac, ex) =>
+  Math.max(ex * 0.7 + Math.max(0, ac - ex) * 0.5, (steps || 0) * 0.0004 * WEIGHT);
+const burn = (bmr, steps, ac, ex) => Math.round(bmr + activityBurn(steps || 0, ac || 0, ex || 0));
+
 const SAMSUNG = 'com.sec.android.app.shealth', HSYNC = 'nl.appyhapps.healthsync';
 const md = (origin) => ({ data_origin: origin || SAMSUNG, recording_method: 'automatically_recorded' });
 /** A daily total as the app sends it: no metadata. `endH` is the hour it runs
@@ -151,7 +157,7 @@ console.log('\n=== a sync with the app\'s default settings builds the day ===');
   eq('active calories written (more than the workout, so all-day)', d.ActiveCal, 610);
   eq('exercise = the workout record only; the all-day total is not exercise', d.ExerciseCal, 350);
   eq('new row inherits BMR from the newest scan', d.BMR, 1672);
-  eq('TDEE derived', d.TDEE_Target, Math.round(1672 + 350 * 0.7 + (610 - 350) * 0.5));
+  eq('TDEE derived from the calorie figures, which beat 8,200 steps here', d.TDEE_Target, burn(1672, 8200, 610, 350));
   eq('no calories eaten yet, so deficit stays blank', d.Deficit, '');
   eq('DayType untouched', d.DayType, '');
   eq('raw records kept in a hidden tab', [!!w.sheets['Activity Sync'], w.sheets['Activity Sync']._hidden], [true, true]);
@@ -263,7 +269,7 @@ console.log('\n=== food logged by Claude is left alone ===');
   eq('calories, protein, fat, day type and notes unchanged',
      [d.Calories, d.Protein_g, d.Fat_g, d.DayType, d.Notes], [1540, 147, 68, 'Busy', 'lunch at hawker']);
   eq('still one row for the date', w.sheets['Daily Log']._grid.filter(x => String(x[0]).slice(0, 10) === TODAY).length, 1);
-  eq('deficit derived now that calories exist', d.Deficit, 1672 - 1540);
+  eq('deficit derived now that calories exist, steps included', d.Deficit, burn(1672, 9000, 0, 0) - 1540);
 }
 
 console.log('\n=== what does not arrive stays blank, never 0 ===');
@@ -341,6 +347,25 @@ console.log('\n=== a too-short calorie record is not a workout ===');
   const w = world();
   call(w, payload({ total_calories: [rawCal(TODAY, 12, 12.1, 40)] }));   // 6 minutes
   eq('ignored', row(w, TODAY), null);
+}
+
+
+console.log('\n=== a big walking day is not credited with nothing ===');
+{
+  // Samsung shares steps but no activity calories, so ActiveCal arrives barely
+  // above the workout. Steps have to carry the day.
+  const w = world();
+  call(w, payload({
+    steps: [rawSteps(TODAY, 7, 22, 13564)],
+    active_calories: [rawCal(TODAY, 7, 22, 454)],
+    total_calories: [rawCal(TODAY, 21, 22.4, 446)],
+  }));
+  const d = row(w, TODAY);
+  const fromCals = 446 * 0.7 + Math.max(0, 454 - 446) * 0.5;      // 316
+  const fromSteps = 13564 * 0.0004 * WEIGHT;                      // 412
+  eq('steps carry it, and the two are never added', d.TDEE_Target, Math.round(1672 + Math.max(fromCals, fromSteps)));
+  eq('which is more than the calorie figures alone would give', d.TDEE_Target > Math.round(1672 + fromCals), true);
+  eq('ActiveCal itself is untouched, still what the phone sent', d.ActiveCal, 454);
 }
 
 console.log('\n=== the app\'s Test Webhook button writes nothing ===');

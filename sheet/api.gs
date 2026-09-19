@@ -628,14 +628,42 @@ function upsert(sh, map, nCols, date, p) {
 function writeDerived(sh, row) {
   if (!row) return;
   var v = sh.getRange(row, 1, 1, 12).getValues()[0];
-  var cal = v[2], ac = v[7], ex = v[8], bmr = v[9];
+  var cal = v[2], steps = v[6], ac = v[7], ex = v[8], bmr = v[9];
   var haveNum = function (x) { return x !== '' && x != null && !isNaN(x); };
   if (!haveNum(bmr)) { sh.getRange(row, 11, 1, 2).setValue(''); return; }
-  var tdee = Math.round(Number(bmr) +
-    (haveNum(ex) ? Number(ex) : 0) * 0.7 +
-    Math.max(0, (haveNum(ac) ? Number(ac) : 0) - (haveNum(ex) ? Number(ex) : 0)) * 0.5);
+  var tdee = Math.round(Number(bmr) + activityBurn(
+    haveNum(steps) ? Number(steps) : 0,
+    haveNum(ac) ? Number(ac) : 0,
+    haveNum(ex) ? Number(ex) : 0));
   sh.getRange(row, 11).setValue(tdee);
   sh.getRange(row, 12).setValue(haveNum(cal) ? tdee - Number(cal) : '');
+}
+
+/** The day's activity calories above resting. Steps put a FLOOR under it:
+ *  Samsung Health shares its step count with Health Connect but not its
+ *  activity calories, so ActiveCal comes from whichever app will estimate it,
+ *  and has come back barely above the workout on a 13,500-step day. Whichever
+ *  of the two is larger wins; they are never added together.
+ *
+ *  Keep this in step with buildDays() in assets/app.js — the dashboard
+ *  recomputes from source and these two must agree. */
+function activityBurn(steps, activeCal, exerciseCal) {
+  var fromCals = exerciseCal * 0.7 + Math.max(0, activeCal - exerciseCal) * 0.5;
+  var fromSteps = steps * 0.0004 * (latestScanWeight() || 75);
+  return Math.max(fromCals, fromSteps);
+}
+
+/** Weight from the newest scan that has one, for the step rate. */
+function latestScanWeight() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BASE);
+  if (!sh || sh.getLastRow() < 2) return null;
+  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+  var best = null, bestDate = '';
+  for (var i = 0; i < vals.length; i++) {
+    var d = cellDate(vals[i][0]), kg = vals[i][1];
+    if (d && kg !== '' && kg != null && !isNaN(kg) && d >= bestDate) { bestDate = d; best = Number(kg); }
+  }
+  return best;
 }
 
 function findRow(sh, date) {
@@ -733,7 +761,7 @@ function summarise(row) {
   var bits = [];
   bits.push(cal == null ? 'no intake logged' : cal + ' kcal');
   if (bmr != null) {
-    var tdee = Math.round(bmr + (ex || 0) * 0.7 + Math.max(0, (ac || 0) - (ex || 0)) * 0.5);
+    var tdee = Math.round(bmr + activityBurn(row.Steps || 0, ac || 0, ex || 0));
     bits.push('burn ' + tdee);
     if (cal != null) {
       var def = tdee - cal;

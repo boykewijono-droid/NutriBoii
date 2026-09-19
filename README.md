@@ -65,9 +65,19 @@ average. It is never treated as zero.
 to, but leaving them empty is the normal path:
 
 ```
-TDEE_Target = BMR + (ExerciseCal × 0.7) + ((ActiveCal − ExerciseCal) × 0.5)
+activity    = max( (ExerciseCal × 0.7) + ((ActiveCal − ExerciseCal) × 0.5),
+                   Steps × 0.0004 × your weight )
+TDEE_Target = BMR + activity
 Deficit     = TDEE_Target − Calories
 ```
+
+**Steps put a floor under the day's activity.** Samsung Health shares its step
+count with Health Connect but not its activity calories, so `ActiveCal` comes
+from whichever app is willing to estimate it — and on a real 13,564-step day
+that arrived 8 kcal above the workout. Whichever is larger, the calorie figures
+or the walking implied by the steps, wins; they are never added together. It
+changes nothing on gym days, where the workout dominates, and rescues the days
+where the calorie stream is junk.
 
 ### Notes are parsed, so name the foods
 

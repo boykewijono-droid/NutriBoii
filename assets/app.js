@@ -363,6 +363,16 @@ function buildDays(rows, scans, targets, today) {
 
   var tf = CFG.tdee || {}, exF = tf.exerciseFactor == null ? 0.7 : tf.exerciseFactor,
       inF = tf.incidentalFactor == null ? 0.5 : tf.incidentalFactor;
+
+  // Steps set a floor under the day's activity. Samsung Health shares its step
+  // count with Health Connect but NOT its activity calories, so ActiveCal
+  // arrives from whichever app is willing to estimate it — and on a 13,500-step
+  // day that came to 8 kcal above the workout, which is nonsense. Steps are the
+  // number that matches the phone exactly, so when walking accounts for more
+  // than the calorie figures do, walking wins. Neither is added to the other.
+  var latestWeight = null;
+  for (var w = scans.length - 1; w >= 0; w--) { if (scans[w].weight != null) { latestWeight = scans[w].weight; break; } }
+  var perStep = (tf.stepKcalPerKg == null ? 0.0004 : tf.stepKcalPerKg) * (latestWeight || 75);
   var map = {};
 
   rows.forEach(function (r) {
@@ -384,10 +394,14 @@ function buildDays(rows, scans, targets, today) {
     // columns so the sheet reads sensibly on its own, but if a number is then
     // edited by hand the stored total goes stale — recomputing means the
     // dashboard is never wrong, whatever is sitting in those two cells.
+    var ex = d.exercise == null ? 0 : d.exercise;
+    var ac = d.active   == null ? 0 : d.active;
+    d.fromCals  = ex * exF + Math.max(0, ac - ex) * inF;
+    d.fromSteps = d.steps == null ? 0 : d.steps * perStep;
+    d.activity  = Math.max(d.fromCals, d.fromSteps);
+    d.stepFloor = d.fromSteps > d.fromCals;
     if (d.bmr != null) {
-      var ex = d.exercise == null ? 0 : d.exercise;
-      var ac = d.active   == null ? 0 : d.active;
-      d.tdee = Math.round(d.bmr + ex * exF + Math.max(0, ac - ex) * inF);
+      d.tdee = Math.round(d.bmr + d.activity);
     } else {
       d.tdee = num(r.tdee_target);
     }
@@ -448,6 +462,7 @@ function voidDay(date) {
   return { date: date, logged: false, hasIntake: false, inProgress: false, countable: false,
            cal: null, protein: null, fat: null, carbs: null, steps: null, active: null,
            exercise: null, deficit: null, tdee: null, dayType: null, gym: null, notes: null,
+           activity: 0, fromCals: 0, fromSteps: 0, stepFloor: false,
            drivers: [], fatState: 'ok', proteinLow: false, proteinWarn: false, flagged: false };
 }
 function getDay(date) { return M.days[date] || voidDay(date); }
@@ -1154,11 +1169,10 @@ function dayFraction() {
 
 function burnedSoFar(d) {
   if (d.bmr == null) return null;
-  var c = sgtClock();
-  var tf = CFG.tdee || {}, exF = tf.exerciseFactor == null ? 0.7 : tf.exerciseFactor,
-      inF = tf.incidentalFactor == null ? 0.5 : tf.incidentalFactor;
-  var ex = d.exercise || 0, ac = d.active || 0;
-  return Math.round(d.bmr * (c.h * 60 + c.m) / 1440 + ex * exF + Math.max(0, ac - ex) * inF);
+  // Resting burn for the share of the day that has passed, plus every
+  // activity calorie earned so far — the same activity figure the day's
+  // total uses, steps floor and all.
+  return Math.round(d.bmr * dayFraction() + (d.activity || 0));
 }
 
 /** Protein and fat at a glance, the balance said in plain words: "57 g short
@@ -1675,6 +1689,10 @@ function openDay(date) {
       row('Active calories', d.active, 'kcal') +
       row('Exercise calories', d.exercise, 'kcal') +
       row('Activity level', (function () { var a = activityLevel(d); return a && a.level; })(), '') +
+      // say it plainly when the burn came from steps rather than from the
+      // calorie figures, so the number can always be traced
+      (d.stepFloor && d.steps ? '<div class="row"><span>Activity counted from</span>' +
+        '<b>' + nf(d.steps) + ' steps &rarr; ' + nf(Math.round(d.fromSteps)) + ' kcal</b></div>' : '') +
       row('Gym', gymLabel(d), '') +
       '</div>';
     if (d.fatState === 'over') {

@@ -45,7 +45,12 @@ window.NUTRIBOII_CONFIG = {
 
   /* TDEE_Target = BMR + (ExerciseCal * 0.7) + ((ActiveCal - ExerciseCal) * 0.5)
      Used to recompute the target when the Sheet's TDEE_Target cell is blank. */
-  tdee: { exerciseFactor: 0.7, incidentalFactor: 0.5 },
+  /* stepKcalPerKg puts a FLOOR under the day's activity: steps x this x your
+     weight, used when it beats the calorie figures. Samsung shares its step
+     count but not its activity calories, so without it a 13,500-step day can
+     be credited with almost nothing. 0.0004 x 76 kg is about 30 kcal per
+     1,000 steps, net of the resting burn those minutes would have cost. */
+  tdee: { exerciseFactor: 0.7, incidentalFactor: 0.5, stepKcalPerKg: 0.0004 },
 
   /* How active a day was, worked out from the day's own numbers so nobody has
      to answer a question about it:
