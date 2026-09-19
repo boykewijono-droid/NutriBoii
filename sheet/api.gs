@@ -249,13 +249,17 @@ function addTotals(sh, row, p) {
   return out;
 }
 
-/** mealNote appends one timestamped line to Notes, using the sheet's own
- *  clock. Claude Chat has no clock, so left to itself it either guesses the
- *  time or leaves it out; the server knows it exactly. */
+/** mealNote appends one line to Notes, so the column becomes the day's food
+ *  diary without any caller having to read it back first. No timestamp: Boii
+ *  asked for the food alone, in ten words or fewer.
+ *
+ *  mealNoteTimed does the same with the Singapore time in front, for a caller
+ *  that wants one — the sheet has a clock and Claude Chat does not. */
 function appendMeal(sh, row, p) {
-  var text = p.mealnote == null ? '' : String(p.mealnote).trim();
+  var timed = p.mealnotetimed == null ? '' : String(p.mealnotetimed).trim();
+  var text = timed || (p.mealnote == null ? '' : String(p.mealnote).trim());
   if (!text) return null;
-  var line = Utilities.formatDate(new Date(), 'Asia/Singapore', 'h:mm a') + ' ' + text;
+  var line = timed ? Utilities.formatDate(new Date(), 'Asia/Singapore', 'h:mm a') + ' ' + timed : text;
   var cur = String(sh.getRange(row, 14).getValue() || '').trim();
   sh.getRange(row, 14).setValue(cur ? cur + '\n' + line : line);
   return line;

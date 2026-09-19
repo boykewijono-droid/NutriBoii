@@ -351,9 +351,8 @@ console.log('\n=== logging a meal WITHOUT reading the day first ===');
 
   const lines = String(named.Notes).split('\n');
   ok('each meal is its own line in Notes', lines.length === 2, JSON.stringify(named.Notes));
-  ok('the server stamps the time, since Chat has no clock',
-     /^\d{1,2}:\d{2} (AM|PM) home coffee \+ full cream milk$/.test(lines[0]), lines[0]);
-  ok('second line is the second meal', /chicken rice, no skin$/.test(lines[1]), lines[1]);
+  ok('the food alone: no time, no title', lines[0] === 'home coffee + full cream milk', lines[0]);
+  ok('second line is the second meal', lines[1] === 'chicken rice, no skin', lines[1]);
   ok('every reply carries the Singapore time',
      /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM) SGT$/.test(call2.serverTime), call2.serverTime);
 }
@@ -373,6 +372,16 @@ console.log('\n=== a bad add is refused, not silently ignored ===');
   const r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
     date: '2026-09-19', addCalories: 'two hundred' }));
   ok('refused with a clear message', !r.ok && /must be a number/.test(r.error), r.error);
+}
+
+
+console.log('\n=== mealNoteTimed, for a caller that wants the clock ===');
+{
+  const { sheets, store } = setup();
+  const r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-19', mealNoteTimed: 'office coffee' }));
+  ok('the sheet stamps the Singapore time in front',
+     /^\d{1,2}:\d{2} (AM|PM) office coffee$/.test(r.meal), r.meal);
 }
 
 console.log('\n' + '='.repeat(46));
