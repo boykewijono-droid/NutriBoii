@@ -71,8 +71,18 @@ function call(sheets, store, params, verb, body) {
     },
     Utilities: {
       getUuid: () => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-      formatDate: (d, tz) => new Intl.DateTimeFormat('en-CA',
-        { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d),
+      // honours the pattern, so code that asks for a time gets a time
+      formatDate: (d, tz, fmt) => {
+        const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit',
+          day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(d);
+        const g = t => ((parts.find(x => x.type === t) || {}).value || '');
+        if (!fmt) return g('year') + '-' + g('month') + '-' + g('day');
+        return String(fmt)
+          .replace(/'([^']*)'/g, (m, lit) => lit)
+          .replace(/yyyy/g, g('year')).replace(/MM/g, g('month')).replace(/dd/g, g('day'))
+          .replace(/h:mm/g, g('hour') + ':' + g('minute'))
+          .replace(/\ba\b/g, g('dayPeriod').toUpperCase());
+      },
     },
     ContentService: {
       MimeType: { JSON: 'json' },
@@ -315,6 +325,54 @@ console.log('\n=== read back, POST, and the tap-link page ===');
   })());
   const bad = call(sheets, store, { token: 'WRONG', action: 'get', date: '2026-09-12' });
   ok('error also renders a page, not a stack trace', bad.kind === 'html' && /Not written/.test(bad.text));
+}
+
+
+console.log('\n=== logging a meal WITHOUT reading the day first ===');
+{
+  const { sheets, store } = setup();
+  const call1 = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-19', addCalories: '250', addProtein: '8', addFat: '14', mealNote: 'home coffee + full cream milk' }));
+  ok('first meal creates the day', call1.ok, call1.error);
+  let named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
+  ok('calories start at the meal', named.Calories === 250, 'got ' + named.Calories);
+  ok('macros too', named.Protein_g === 8 && named.Fat_g === 14);
+  ok('carbs untouched, not zeroed', named.Carbs_g === '', JSON.stringify(named.Carbs_g));
+
+  const call2 = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-19', addCalories: '640', addProtein: '45', addFat: '22', addCarbs: '60',
+    mealNote: 'chicken rice, no skin' }));
+  named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
+  ok('THE POINT: the second meal ADDS, it does not replace', named.Calories === 890, 'got ' + named.Calories);
+  ok('protein adds up', named.Protein_g === 53, 'got ' + named.Protein_g);
+  ok('carbs start from blank and become 60', named.Carbs_g === 60, 'got ' + named.Carbs_g);
+  ok('the reply reports what the totals became', call2.added && call2.added.Calories === 890,
+     JSON.stringify(call2.added));
+
+  const lines = String(named.Notes).split('\n');
+  ok('each meal is its own line in Notes', lines.length === 2, JSON.stringify(named.Notes));
+  ok('the server stamps the time, since Chat has no clock',
+     /^\d{1,2}:\d{2} (AM|PM) home coffee \+ full cream milk$/.test(lines[0]), lines[0]);
+  ok('second line is the second meal', /chicken rice, no skin$/.test(lines[1]), lines[1]);
+  ok('every reply carries the Singapore time',
+     /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM) SGT$/.test(call2.serverTime), call2.serverTime);
+}
+
+console.log('\n=== absolute values still correct a mistake ===');
+{
+  const { sheets, store } = setup();
+  call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-19', addCalories: '900' });
+  call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-19', calories: '1750' });
+  const named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
+  ok('calories= sets the total outright', named.Calories === 1750, 'got ' + named.Calories);
+}
+
+console.log('\n=== a bad add is refused, not silently ignored ===');
+{
+  const { sheets, store } = setup();
+  const r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-19', addCalories: 'two hundred' }));
+  ok('refused with a clear message', !r.ok && /must be a number/.test(r.error), r.error);
 }
 
 console.log('\n' + '='.repeat(46));

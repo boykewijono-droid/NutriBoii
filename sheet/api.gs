@@ -105,6 +105,7 @@ function handle(e, verb) {
 
     var action = String(p.action || 'ping').toLowerCase();
     var out;
+    // Every reply carries the Singapore time, because callers rarely know it.
     if (action === 'ping')      out = { ok: true, action: 'ping', summary: 'NutriBoii API is up. Token accepted.' };
     else if (action === 'log')  out = logDay(p);
     else if (action === 'scan') out = addScan(p);
@@ -113,6 +114,7 @@ function handle(e, verb) {
     else if (action === 'sync') out = hsSync(e);
     else throw new Error('Unknown action "' + action + '". Use log, scan, get, delete, sync or ping.');
 
+    if (out && typeof out === 'object') out.serverTime = nowSGT();
     return asHtml ? htmlReply(out) : jsonReply(out);
   } catch (err) {
     var bad = { ok: false, error: String(err && err.message || err) };
@@ -198,6 +200,9 @@ function logDay(p) {
       if (bmr != null) sh.getRange(res.row, 10).setValue(bmr);
     }
 
+    var added = addTotals(sh, res.row, p);
+    var noted = appendMeal(sh, res.row, p);
+
     // Fill TDEE_Target and Deficit so the sheet reads sensibly on its own.
     // Recomputed on EVERY log call, so a morning row that only had breakfast
     // gets corrected when the evening totals arrive. The dashboard ignores
@@ -209,10 +214,51 @@ function logDay(p) {
     return {
       ok: true, action: 'log', date: date,
       created: res.created, updated: !res.created,
-      wrote: res.wrote, row: row,
+      wrote: res.wrote, added: added, meal: noted, row: row,
       summary: summarise(row)
     };
   } finally { lock.releaseLock(); }
+}
+
+/* --- logging a meal without reading the day first ---------------------- */
+/* addCalories / addProtein / addFat / addCarbs ADD to whatever is already in
+ * the cell, so a caller that cannot read the sheet can still log the second
+ * meal of the day without wiping the first. Sending `calories=` still sets
+ * the absolute value, for corrections. */
+var ADD_MAP = {
+  addcalories: 3, addcal: 3, addkcal: 3,
+  addprotein: 4, addproteing: 4,
+  addfat: 5, addfatg: 5,
+  addcarbs: 6, addcarbsg: 6
+};
+
+function addTotals(sh, row, p) {
+  var out = {}, seen = {};
+  for (var key in p) {
+    var col = ADD_MAP[key];
+    if (!col || seen[col]) continue;
+    var v = toNum(p[key]);
+    if (v == null) throw new Error('"' + key + '" must be a number (got "' + p[key] + '").');
+    seen[col] = 1;
+    var cur = sh.getRange(row, col).getValue();
+    var base = (cur === '' || cur == null || isNaN(cur)) ? 0 : Number(cur);
+    var sum = Math.round((base + v) * 10) / 10;
+    sh.getRange(row, col).setValue(sum);
+    out[headerName(sh, col)] = sum;
+  }
+  return out;
+}
+
+/** mealNote appends one timestamped line to Notes, using the sheet's own
+ *  clock. Claude Chat has no clock, so left to itself it either guesses the
+ *  time or leaves it out; the server knows it exactly. */
+function appendMeal(sh, row, p) {
+  var text = p.mealnote == null ? '' : String(p.mealnote).trim();
+  if (!text) return null;
+  var line = Utilities.formatDate(new Date(), 'Asia/Singapore', 'h:mm a') + ' ' + text;
+  var cur = String(sh.getRange(row, 14).getValue() || '').trim();
+  sh.getRange(row, 14).setValue(cur ? cur + '\n' + line : line);
+  return line;
 }
 
 function addScan(p) {
@@ -717,6 +763,7 @@ function resolveDate(v) {
   return m[1] + '-' + pad2(m[2]) + '-' + pad2(m[3]);
 }
 function todaySGT() { return Utilities.formatDate(new Date(), 'Asia/Singapore', 'yyyy-MM-dd'); }
+function nowSGT() { return Utilities.formatDate(new Date(), 'Asia/Singapore', "yyyy-MM-dd h:mm a 'SGT'"); }
 function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
 
 function cellDate(v) {

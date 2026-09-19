@@ -83,7 +83,18 @@ function call(w, body, params) {
     PropertiesService: { getDocumentProperties: () => ({ getProperty: (k) => (k in w.store ? w.store[k] : null), setProperty: () => {}, deleteProperty: () => {} }) },
     Utilities: {
       getUuid: () => 'x',
-      formatDate: (d, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d),
+      // honours the pattern, so code that asks for a time gets a time
+      formatDate: (d, tz, fmt) => {
+        const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit',
+          day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(d);
+        const g = t => ((parts.find(x => x.type === t) || {}).value || '');
+        if (!fmt) return g('year') + '-' + g('month') + '-' + g('day');
+        return String(fmt)
+          .replace(/'([^']*)'/g, (m, lit) => lit)
+          .replace(/yyyy/g, g('year')).replace(/MM/g, g('month')).replace(/dd/g, g('day'))
+          .replace(/h:mm/g, g('hour') + ':' + g('minute'))
+          .replace(/\ba\b/g, g('dayPeriod').toUpperCase());
+      },
     },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => { captured = t; return { setMimeType: () => t }; } },
     HtmlService: { createHtmlOutput: (h) => { captured = h; return { addMetaTag: () => h }; } },

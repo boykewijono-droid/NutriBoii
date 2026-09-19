@@ -1030,7 +1030,7 @@ function renderToday() {
 
   if (d.notes) {
     h += '<div class="sec"><div class="note' + (d.flagged ? ' warn' : '') + '">' +
-         '<span class="lbl">Note</span>' + esc(d.notes) + '</div></div>';
+         '<span class="lbl">Note</span>' + noteHtml(d.notes) + '</div></div>';
   }
   host.innerHTML = h;
   paintHero(host);
@@ -1242,6 +1242,10 @@ function paintHero(root) {
     raf(step);
   });
 }
+
+/** Notes are a food diary now: one timestamped line per meal, written by the
+ *  API with the sheet's own clock. Keep the lines apart on screen. */
+function noteHtml(t) { return esc(t).split(/\r?\n/).join('<br>'); }
 
 function heroVoid(d) {
   // No "last logged" line here: lastDayStrip() sits directly underneath and
@@ -1710,7 +1714,7 @@ function openDay(date) {
       h += '<div class="note"><span class="lbl">Protein so far</span>' +
         nf(M.targets.protein_floor_g - d.protein) + ' g to go to the ' + nf(M.targets.protein_floor_g) + ' g target.</div>';
     }
-    if (d.notes) h += '<div class="note"><span class="lbl">Note</span>' + esc(d.notes) + '</div>';
+    if (d.notes) h += '<div class="note"><span class="lbl">Note</span>' + noteHtml(d.notes) + '</div>';
   }
   s.innerHTML = h;
   s.hidden = false;
