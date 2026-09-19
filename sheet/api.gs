@@ -249,20 +249,48 @@ function addTotals(sh, row, p) {
   return out;
 }
 
-/** mealNote appends one line to Notes, so the column becomes the day's food
- *  diary without any caller having to read it back first. No timestamp: Boii
- *  asked for the food alone, in ten words or fewer.
+/** Notes is the day's food diary. Each meal goes in as its own bullet, with
+ *  that meal's own calories in brackets, so the damage is obvious at a glance:
  *
- *  mealNoteTimed does the same with the Singapore time in front, for a caller
- *  that wants one — the sheet has a clock and Claude Chat does not. */
+ *      - home coffee + full cream milk (250)
+ *      - char kway teow, iced kopi (740)
+ *
+ *  The calories come from the addCalories sent in the same call, which is the
+ *  meal's own figure; nothing to work out and nothing to read back.
+ *
+ *  mealNoteTimed puts the Singapore time after the bullet, for a caller that
+ *  wants one. noteLine appends a plain line with no bullet and no calories —
+ *  that is for the "fat over from ..." line, which must NOT wipe the diary
+ *  the way sending `notes` does. */
 function appendMeal(sh, row, p) {
+  var lines = [];
   var timed = p.mealnotetimed == null ? '' : String(p.mealnotetimed).trim();
-  var text = timed || (p.mealnote == null ? '' : String(p.mealnote).trim());
-  if (!text) return null;
-  var line = timed ? Utilities.formatDate(new Date(), 'Asia/Singapore', 'h:mm a') + ' ' + timed : text;
+  var meal = timed || (p.mealnote == null ? '' : String(p.mealnote).trim());
+  if (meal) {
+    var kcal = mealKcal(p);
+    lines.push('- ' + (timed ? Utilities.formatDate(new Date(), 'Asia/Singapore', 'h:mm a') + ' ' : '') +
+      meal + (kcal == null ? '' : ' (' + kcal + ')'));
+  }
+  var plain = p.noteline == null ? '' : String(p.noteline).trim();
+  if (plain) lines.push(plain);
+  if (!lines.length) return null;
+
   var cur = String(sh.getRange(row, 14).getValue() || '').trim();
-  sh.getRange(row, 14).setValue(cur ? cur + '\n' + line : line);
-  return line;
+  var all = lines.join('\n');
+  sh.getRange(row, 14).setValue(cur ? cur + '\n' + all : all);
+  return all;
+}
+
+/** This meal's calories: whatever addCalories carried in the same call. */
+function mealKcal(p) {
+  var keys = ['addcalories', 'addcal', 'addkcal'];
+  for (var i = 0; i < keys.length; i++) {
+    if (p[keys[i]] != null && String(p[keys[i]]).trim() !== '') {
+      var v = toNum(p[keys[i]]);
+      if (v != null) return Math.round(v);
+    }
+  }
+  return null;
 }
 
 function addScan(p) {

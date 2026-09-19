@@ -1245,7 +1245,20 @@ function paintHero(root) {
 
 /** Notes are a food diary now: one timestamped line per meal, written by the
  *  API with the sheet's own clock. Keep the lines apart on screen. */
-function noteHtml(t) { return esc(t).split(/\r?\n/).join('<br>'); }
+function noteHtml(t) {
+  var lines = String(t == null ? '' : t).split(/\r?\n/).filter(function (x) { return x.trim(); });
+  if (lines.length < 2 && !/^\s*[-•*]\s/.test(lines[0] || '')) return esc(t);
+  // The API writes one bullet per meal, with that meal's calories in
+  // brackets. Render them as a real list, and keep any line that is not a
+  // meal — "fat over from ..." — as a line of its own underneath.
+  var out = '', meals = [];
+  lines.forEach(function (l) {
+    var m = l.match(/^\s*[-•*]\s*(.*)$/);
+    if (m) meals.push('<li>' + esc(m[1]) + '</li>');
+    else out += '<span class="note-line">' + esc(l) + '</span>';
+  });
+  return (meals.length ? '<ul class="meals">' + meals.join('') + '</ul>' : '') + out;
+}
 
 function heroVoid(d) {
   // No "last logged" line here: lastDayStrip() sits directly underneath and

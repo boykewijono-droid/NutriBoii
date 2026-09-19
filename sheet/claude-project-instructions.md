@@ -116,23 +116,27 @@ When `Fat_g` goes over the 70 g limit, **name the foods that caused it** in
 Write it plainly, like `fat over from chocolate + cashews + olive oil`.
 
 **Log each meal as a line of ten words or fewer**, sent as `mealNote`. The API
-appends it as its own line, so `Notes` becomes the day's food diary:
+adds the bullet and the meal's calories itself, from the `addCalories` in the
+same call, so `Notes` becomes the day's food diary:
 
 ```
-home coffee + full cream milk
-char kway teow, iced kopi
-soto madura + egg, sambal, 3 crackers, chicken satay
+- home coffee + full cream milk (250)
+- char kway teow, iced kopi (740)
+- soto madura + egg, sambal, 3 crackers, chicken satay (680)
 ```
 
-**No times and no titles** — the food alone. You have no clock, so never write
-a time into the text and never ask him for one. (If a time is ever wanted,
-`mealNoteTimed` makes the sheet stamp it; every reply also carries
+Send the food text only — **no bullet, no time, no calories in the text.** You
+have no clock, so never write a time and never ask him for one. (If a time is
+ever wanted, `mealNoteTimed` puts one in; every reply also carries
 `serverTime`.)
 
 Keep the food words themselves intact — the dashboard reads this field for
 what pushed fat up — but drop everything else: no "he had", no adjectives, no
-brand names. When fat goes over, add the `fat over from ...` line as well
-(that one through `notes`, which replaces the field).
+brand names.
+
+**When fat goes over, add the `fat over from ...` line with `noteLine`**,
+which appends a plain line. Never use `notes` for it: `notes` REPLACES the
+whole field and would wipe the day's meals.
 
 The pattern worth catching: fat usually gets blown by stacking two or three fat
 sources in one day rather than by one big item. Naming them is the whole point

@@ -420,6 +420,10 @@ td b{font-weight:500}
 .note.warn{border-left-color:var(--flag)}
 .note.caution{border-left-color:var(--amber)}
 .note .lbl{display:block;margin-bottom:6px}
+/* the food diary: one bullet per meal, its own calories in brackets */
+.note .meals{margin:0;padding-left:17px}
+.note .meals li{margin:2px 0}
+.note .note-line{display:block;margin-top:8px}
 
 /* ==========================  states  ===================================== */
 .state{

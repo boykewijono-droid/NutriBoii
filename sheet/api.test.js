@@ -351,8 +351,9 @@ console.log('\n=== logging a meal WITHOUT reading the day first ===');
 
   const lines = String(named.Notes).split('\n');
   ok('each meal is its own line in Notes', lines.length === 2, JSON.stringify(named.Notes));
-  ok('the food alone: no time, no title', lines[0] === 'home coffee + full cream milk', lines[0]);
-  ok('second line is the second meal', lines[1] === 'chicken rice, no skin', lines[1]);
+  ok('a bullet and the meal\'s own calories in brackets',
+     lines[0] === '- home coffee + full cream milk (250)', lines[0]);
+  ok('second meal, its own calories', lines[1] === '- chicken rice, no skin (640)', lines[1]);
   ok('every reply carries the Singapore time',
      /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM) SGT$/.test(call2.serverTime), call2.serverTime);
 }
@@ -380,8 +381,39 @@ console.log('\n=== mealNoteTimed, for a caller that wants the clock ===');
   const { sheets, store } = setup();
   const r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
     date: '2026-09-19', mealNoteTimed: 'office coffee' }));
-  ok('the sheet stamps the Singapore time in front',
-     /^\d{1,2}:\d{2} (AM|PM) office coffee$/.test(r.meal), r.meal);
+  ok('the sheet stamps the Singapore time after the bullet',
+     /^- \d{1,2}:\d{2} (AM|PM) office coffee$/.test(r.meal), r.meal);
+}
+
+
+console.log('\n=== the fat line must NOT wipe the day\'s meals ===');
+{
+  const { sheets, store } = setup();
+  call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-19',
+    addCalories: '250', mealNote: 'home coffee + full cream milk' });
+  call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-19',
+    addCalories: '980', addFat: '62', mealNote: 'nasi lemak, fried chicken',
+    noteLine: 'fat over from fried chicken + coconut rice' });
+  const named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
+  const lines = String(named.Notes).split('\n');
+  ok('three lines: two meals and the fat note', lines.length === 3, JSON.stringify(named.Notes));
+  ok('the first meal survived', lines[0] === '- home coffee + full cream milk (250)', lines[0]);
+  ok('the fat line is plain, no bullet, no calories',
+     lines[2] === 'fat over from fried chicken + coconut rice', lines[2]);
+
+  // and the old way still replaces, which is why the instructions forbid it
+  call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-19',
+    notes: 'replaced' });
+  const after = {}; DAILY_HDR.forEach((h, i) => after[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
+  ok('notes= still replaces outright, for corrections', after.Notes === 'replaced', after.Notes);
+}
+
+console.log('\n=== a meal with no calories still gets its bullet ===');
+{
+  const { sheets, store } = setup();
+  const r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-19', mealNote: 'black coffee' }));
+  ok('bullet, no empty brackets', r.meal === '- black coffee', r.meal);
 }
 
 console.log('\n' + '='.repeat(46));
