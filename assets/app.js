@@ -1573,6 +1573,18 @@ function renderTrends() {
   if (M.scans.length) h += scanTable();
   host.innerHTML = h;
 
+  // Wording follows the source. The scale sends weigh-ins; the InBody scans.
+  // An empty chart on the Daily scale tab used to read "Add InBody scans to
+  // the Baselines tab", which answers a question nobody asked — and is what
+  // body fat and fat mass would both have said the day the scale started
+  // sending weight without a fat percentage.
+  var isScale = bodySource === 'scale';
+  var eachOne = isScale ? 'kg, each weigh-in' : 'kg, each scan';
+  var addScans = 'Add InBody scans to the Baselines tab';
+  var noBf = isScale ? 'The scale has not sent a body fat reading' : addScans;
+  var noWt = isScale ? 'No weigh-ins yet' : addScans;
+  var noFm = isScale ? 'Needs weight and body fat from the same weigh-in' : addScans;
+
   var scans = series.filter(function (s) { return s.bf != null; });
   // One shared time axis for every body-composition chart, so the points line up.
   var all = series;
@@ -1588,7 +1600,7 @@ function renderTrends() {
       lineChart(w, {
         target: goal,
         fmtY: function (v) { return nf(v, 1) + '%'; },
-        emptyText: 'Add InBody scans to the Baselines tab',
+        emptyText: noBf,
         points: scans.map(function (s) {
           return { x01: x01(s), y: s.bf, mark: true,
             label: fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }),
@@ -1601,11 +1613,11 @@ function renderTrends() {
   var ws = series.filter(function (s) { return s.weight != null; });
   mountChart($('#cWt'), function (w) {
     return chartHead('Weight',
-        '<span><i class="key"></i>kg, each scan</span>') +
+        '<span><i class="key"></i>' + eachOne + '</span>') +
       lineChart(w, {
         height: 180, zeroFloor: false,
         fmtY: function (v) { return nf(v, 1); },
-        emptyText: 'Add InBody scans to the Baselines tab',
+        emptyText: noWt,
         points: ws.map(function (s) {
           return { x01: x01(s), y: s.weight,
             label: fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }),
@@ -1620,12 +1632,12 @@ function renderTrends() {
   var fm = series.filter(function (s) { return s.fatMass != null; });
   mountChart($('#cFm'), function (w) {
     return chartHead('Fat mass',
-        '<span><i class="key"></i>kg, each scan</span><span><i class="key t"></i>at ' + goal + '%</span>') +
+        '<span><i class="key"></i>' + eachOne + '</span><span><i class="key t"></i>at ' + goal + '%</span>') +
       lineChart(w, {
         height: 180,
         target: bodySource === 'inbody' && p.state === 'ok' ? p.current.fatMass - p.toLose : null,
         fmtY: function (v) { return nf(v, 1); },
-        emptyText: 'Add InBody scans to the Baselines tab',
+        emptyText: noFm,
         points: fm.map(function (s) {
           return { x01: x01(s), y: s.fatMass, mark: true,
             label: fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }),
