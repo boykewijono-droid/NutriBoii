@@ -399,6 +399,16 @@ var HS_GYM_TYPES = {
   70: 'strength training', 81: 'weightlifting', 13: 'calisthenics',
   10: 'boot camp', 36: 'high intensity interval training'
 };
+/* Samsung Health files his gym sessions as type 0, "other workout", and only
+ * labels walks properly — 13 Sept was 97 minutes of type 0 on a day the sheet
+ * calls Gym. Health Sync sometimes translates the same session to 70, but not
+ * always. So an unlabelled workout counts as a gym day when it is long enough
+ * to be one; anything shorter stays unclaimed rather than guessed at.
+ *
+ * Labelling the session in Samsung Health (Weight machine, Strength training)
+ * makes this exact, and then none of this guesswork applies. */
+var HS_GYM_OTHER_TYPE = 0;
+var HS_GYM_OTHER_MINS = 20;
 
 function hsSync(e) {
   var body;
@@ -640,9 +650,15 @@ function hsRollup(store, date) {
 
   var sessionRecs = recs.filter(function (r) { return r.type === 'exercise'; });
   var sessions = sessionRecs.map(function (r) { return [Date.parse(r.start), Date.parse(r.end)]; });
-  // A strength session says it was a gym day without anyone being asked.
+  // A strength session says it was a gym day without anyone being asked; so
+  // does a long unlabelled one, which is how Samsung files them.
   var gym = null;
-  sessionRecs.forEach(function (r) { if (!gym && HS_GYM_TYPES[r.value]) gym = HS_GYM_TYPES[r.value]; });
+  sessionRecs.forEach(function (r) {
+    if (gym) return;
+    if (HS_GYM_TYPES[r.value]) { gym = HS_GYM_TYPES[r.value]; return; }
+    var mins = (Date.parse(r.end) - Date.parse(r.start)) / 60000;
+    if (r.value === HS_GYM_OTHER_TYPE && mins >= HS_GYM_OTHER_MINS) gym = 'workout';
+  });
 
   // Share of a record's time span inside an exercise session. A record that is
   // mostly outside every session (an all-day total, a walk) counts for nothing.

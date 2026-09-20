@@ -458,6 +458,29 @@ console.log('\n=== a strength session is a gym day; a walk is not ===');
   eq('but its calories still count as exercise', row(w2, TODAY).ExerciseCal, 446);
 }
 
+
+console.log('\n=== Samsung files gym sessions as "other workout" (type 0) ===');
+{
+  // 13 Sept: 97 minutes of type 0, on a day the sheet calls Gym
+  const w = world();
+  call(w, payload({ exercise: [session(TODAY, 13, 14.6, SAMSUNG, 0)],
+                    total_calories: [rawCal(TODAY, 13, 14.6, 703)] }));
+  eq('a long unlabelled workout is a gym day', row(w, TODAY).GymDay, 'Yes');
+
+  // 19 Sept: 16 minutes of type 0 — too short to claim
+  const w2 = world();
+  call(w2, payload({ exercise: [session(TODAY, 22.6, 22.87, SAMSUNG, 0)],
+                     total_calories: [rawCal(TODAY, 22.6, 22.87, 90)] }));
+  eq('a short one is left unclaimed, not guessed', row(w2, TODAY).GymDay, '');
+
+  // and a long walk is still just a walk
+  const w3 = world();
+  call(w3, payload({ exercise: [session(TODAY, 21, 22.4, SAMSUNG, 79)],
+                     total_calories: [rawCal(TODAY, 21, 22.4, 446)] }));
+  eq('83 minutes of walking is not a gym day', row(w3, TODAY).GymDay, '');
+  eq('its calories are still exercise', row(w3, TODAY).ExerciseCal, 446);
+}
+
 console.log('\n=== an answer already in the sheet is never overwritten ===');
 {
   const w = world();
