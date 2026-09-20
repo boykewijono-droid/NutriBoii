@@ -333,7 +333,8 @@ function deleteDay(p) {
   try {
     var which = String(p.tab || 'daily').toLowerCase();
     var onScans = (which === 'scan' || which === 'scans' || which === 'baselines');
-    var sh = mustGet(onScans ? BASE : DAILY);
+    var onBody = (which === 'body' || which === 'bodylog' || which === 'scale');
+    var sh = mustGet(onBody ? BODY_TAB : onScans ? BASE : DAILY);
     var date = resolveDate(p.date);
     var row = findRow(sh, date);
     if (!row) {
@@ -504,6 +505,11 @@ var BODY_MAP = {
 };
 var BODY_FIELD = { weight: 'weightkg', bodyfat: 'bodyfatpct', lean: 'leanmasskg',
                    bone: 'bonemasskg', water: 'bodywaterkg', bmi: 'bmi' };
+/* Apps whose body measurements are NOT daily weigh-ins. The InBody app pushes
+ * each scan into Health Connect, and those are already in `Baselines` as the
+ * measurements everything is planned against — repeating them here would make
+ * two InBody readings look like a daily trend. */
+var BODY_IGNORE = ['com.inbody2014.inbody'];
 
 function hsBody(body) {
   var recs = [];
@@ -514,8 +520,10 @@ function hsBody(body) {
       var value = Number(valueOf(rec));
       if (isNaN(at) || isNaN(value) || !value) return;
       var md = rec.metadata || {};
+      var origin = String(md.data_origin || md.dataOrigin || 'unknown');
+      if (BODY_IGNORE.indexOf(origin) >= 0) return;
       recs.push({ type: type, at: at, value: value, date: hsSgtDate(String(rec.time)),
-                  origin: String(md.data_origin || md.dataOrigin || 'unknown') });
+                  origin: origin });
     });
   }
   add('weight',  body.weight,          function (r) { return r.kilograms; });

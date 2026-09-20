@@ -432,6 +432,30 @@ console.log('\n=== the daily scale: weight and body fat land in their own tab ==
      w.sheets['Baselines']._grid.slice(1).filter(x => x[0]).length, 1);
 }
 
+
+console.log('\n=== an InBody scan is not a daily weigh-in ===');
+{
+  // The InBody app pushes each scan into Health Connect. Those measurements
+  // are already in Baselines; repeating them as weigh-ins made two scans look
+  // like a daily trend, and labelled them as coming from a scale.
+  const INBODY = 'com.inbody2014.inbody', ZEPP = 'com.xiaomi.hm.health';
+  const w = world();
+  const r = call(w, payload({
+    weight: [{ kilograms: 75.9, time: at(TODAY, 18.7), metadata: md(INBODY) }],
+    body_fat: [{ percentage: 20.6, time: at(TODAY, 18.7), metadata: md(INBODY) }],
+  }));
+  eq('nothing written, so no Body Log tab is even created', !!w.sheets['Body Log'], false);
+  eq('and the reply says there was no weigh-in', r.body, null);
+
+  const w2 = world();
+  call(w2, payload({
+    weight: [{ kilograms: 75.9, time: at(TODAY, 18.7), metadata: md(INBODY) },
+             { kilograms: 76.2, time: at(TODAY, 7.2), metadata: md(ZEPP) }],
+  }));
+  const row2 = w2.sheets['Body Log']._grid.slice(1).find(x => String(x[0]).slice(0, 10) === TODAY);
+  eq('the real scale reading is kept, the scan ignored', [row2[1], row2[7]], [76.2, ZEPP]);
+}
+
 console.log('\n=== a scale reading does not disturb the daily log ===');
 {
   const w = world();

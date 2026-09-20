@@ -1561,7 +1561,7 @@ function renderTrends() {
 
   h += '<div class="sec"><div class="sec-head"><h2>Body composition</h2>' +
     '<span class="lbl">' + (bodySource === 'scale'
-      ? 'Mi scale through Zepp Life · every weigh-in'
+      ? scaleSources() + ' · every weigh-in'
       : 'Measured on an InBody · ' + M.scans.length + ' scan' + (M.scans.length === 1 ? '' : 's')) + '</span></div>' +
     '<div class="chart" id="cBf"></div><div class="chart" id="cWt"></div>' +
     '<div class="chart" id="cFm"></div></div>';
@@ -1682,11 +1682,33 @@ function scanSource(s) {
   return 'InBody · ' + fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }) +
     (s.date === M.today ? '' : ' (' + relDay(s.date).toLowerCase() + ')');
 }
+/** App package names, as the phone reports them, in words. Anything not
+ *  listed shows its package: better an ugly truth than a confident guess. */
+var APP_NAMES = {
+  'com.xiaomi.hm.health': 'Zepp Life',
+  'com.sec.android.app.shealth': 'Samsung Health',
+  'nl.appyhapps.healthsync': 'Health Sync',
+  'com.inbody2014.inbody': 'InBody app',
+  'com.google.android.apps.fitness': 'Google Fit',
+  'com.android.healthconnect.phone': 'phone step counter'
+};
+function appName(pkg) { return pkg ? (APP_NAMES[pkg] || pkg) : 'the scale'; }
+
 function bodySourceLabel(s) {
   if (!s) return null;
   if (bodySource === 'inbody') return scanSource(s);
-  return 'Mi scale · ' + fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }) +
+  // Name the app that actually measured it. Hardcoding "Mi scale" here meant
+  // two InBody scans, arriving through the InBody app, were presented as
+  // daily weigh-ins from a scale that had never sent anything.
+  return appName(s.source) + ' · ' + fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }) +
     (s.date === M.today ? ' (today)' : ' (' + relDay(s.date).toLowerCase() + ')');
+}
+/** The apps behind the daily readings, for the section label. */
+function scaleSources() {
+  var seen = {};
+  M.scale.forEach(function (r) { if (r.source) seen[r.source] = 1; });
+  var names = Object.keys(seen).map(appName);
+  return names.length ? names.join(' + ') : 'the scale';
 }
 
 function scanTable() {
