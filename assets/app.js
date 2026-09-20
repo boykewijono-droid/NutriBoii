@@ -1701,7 +1701,9 @@ var APP_NAMES = {
   'com.sec.android.app.shealth': 'Samsung Health',
   'nl.appyhapps.healthsync': 'Health Sync',
   'com.inbody2014.inbody': 'InBody app',
-  'com.google.android.apps.fitness': 'Google Fit',
+  // Fit holds no scale of its own: every weigh-in here walked in from the
+  // Mi scale through Zepp Life, and Fit is only the doorway it came through.
+  'com.google.android.apps.fitness': 'Mi scale via Google Fit',
   'com.android.healthconnect.phone': 'phone step counter'
 };
 function appName(pkg) { return pkg ? (APP_NAMES[pkg] || pkg) : 'the scale'; }
