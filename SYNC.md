@@ -42,10 +42,11 @@ with the day's totals. If your phone does share it, it fills in by itself.
 
 ## Setup
 
-### 1. Redeploy the API (required, and it's not done yet)
+### 1. Redeploy the API
 
-The version currently live doesn't know `action=sync`, and it also leaves
-`TDEE_Target` and `Deficit` blank.
+Do this after every change to `sheet/api.gs`. Editing the file changes
+nothing on its own: the old version keeps serving until a new one is
+published.
 
 1. Apps Script editor → the **`api`** file → select all → paste the new
    [sheet/api.gs](sheet/api.gs) → **Ctrl+S**.
@@ -106,7 +107,7 @@ already there, NutriBoii can take a weigh-in a day without you typing anything.
   adding to it.
 - Trends then offers a toggle: **InBody** or **Daily scale**.
 
-**The InBody stays the north star.** A £20 scale's body fat is a trend line,
+**The InBody stays the north star.** A $25 scale's body fat is a trend line,
 not a measurement: it is consistent enough to show a direction over a fortnight
 and not accurate enough to plan against. Nothing from the scale touches the
 `Baselines` tab, and the pace projection still uses InBody scans only.
@@ -126,8 +127,8 @@ Health Connect has already merged across every app that writes steps — and
 there are usually several. On one real phone that was Samsung Health (2,881),
 Android's own step counter (2,307) and Health Sync (283), and the merged
 figure came out at 2,375: a number that matched nothing and read lower than
-the phone. Full sends each app's own records, so NutriBoii takes the largest
-single source — Samsung Health — and ignores the rest.
+the phone. Full sends each app's own records, each tagged with the app that
+wrote it, so NutriBoii can take Samsung Health's own count and ignore the rest.
 
 Don't use the minute options. Those bundle every app's records together before
 sending, which locks the double-count in.
