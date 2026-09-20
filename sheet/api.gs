@@ -387,6 +387,11 @@ function deleteDay(p) {
 var HS_TAB = 'Activity Sync';
 var HS_HEAD = ['Key', 'Type', 'Origin', 'Start', 'End', 'Value', 'Date', 'Received'];
 var HS_KEEP_DAYS = 7;          // rebuild and keep this many days: covers a "Past 7 days" resend
+/* Apps whose activity counts are authoritative, in order. Samsung Health is
+ * the count on the phone, so steps and workout calories come from it whenever
+ * it has any for that day, whatever Zepp Life, Health Sync or Android's own
+ * step counter say. */
+var HS_PREFER = ['com.sec.android.app.shealth'];
 
 function hsSync(e) {
   var body;
@@ -633,7 +638,13 @@ function hsRollup(store, date) {
     return share >= 0.5 ? share : 0;
   }
 
-  // total per origin, then the single largest origin, never the sum of origins
+  // Total per origin, then ONE origin: never the sum, or two apps' copies of
+  // the same walk would be added together.
+  //
+  // Samsung Health wins outright when it has anything for the day, because it
+  // is the count on his phone and the one he checks against. Only when it is
+  // silent does the largest of the others stand in — that is a de-duplication
+  // rule, not a "pick the flattering number" rule.
   function best(type, weight) {
     var sums = {};
     recs.forEach(function (r) {
@@ -642,6 +653,10 @@ function hsRollup(store, date) {
       if (!w) return;
       sums[r.origin] = (sums[r.origin] || 0) + r.value * w;
     });
+    for (var i = 0; i < HS_PREFER.length; i++) {
+      var p = HS_PREFER[i];
+      if (sums[p] > 0) return { value: Math.round(sums[p]), origin: p, preferred: true };
+    }
     var top = null;
     Object.keys(sums).forEach(function (o) {
       if (!top || sums[o] > top.value) top = { value: sums[o], origin: o };

@@ -253,7 +253,23 @@ console.log('\n=== two apps writing raw steps are never added together ===');
   const w = world();
   call(w, payload({ steps: [rawSteps(TODAY, 0, 20, 8000, SAMSUNG),
                             rawSteps(TODAY, 8, 12, 4100, HSYNC), rawSteps(TODAY, 12, 20, 4000, HSYNC)] }));
-  eq('largest single source (8100), not 16100', row(w, TODAY).Steps, 8100);
+  eq('one source only (8000), not 16100', row(w, TODAY).Steps, 8000);
+}
+
+console.log('\n=== Samsung Health is the step count, even when another app claims more ===');
+{
+  const ZEPP = 'com.xiaomi.hm.health';
+  const w = world();
+  call(w, payload({ steps: [rawSteps(TODAY, 0, 20, 8000, SAMSUNG), rawSteps(TODAY, 0, 20, 12500, ZEPP)] }));
+  eq('THE POINT: Samsung wins outright, not the bigger number', row(w, TODAY).Steps, 8000);
+}
+
+console.log('\n=== but another app stands in when Samsung is silent ===');
+{
+  const ZEPP = 'com.xiaomi.hm.health';
+  const w = world();
+  call(w, payload({ steps: [rawSteps(TODAY, 0, 20, 9400, ZEPP), rawSteps(TODAY, 0, 20, 6000, HSYNC)] }));
+  eq('largest of the others', row(w, TODAY).Steps, 9400);
 }
 
 console.log('\n=== the same workout from two apps counts once ===');
@@ -261,7 +277,7 @@ console.log('\n=== the same workout from two apps counts once ===');
   const w = world();
   call(w, payload({ exercise: [session(TODAY, 18, 19, SAMSUNG), session(TODAY, 18, 19, HSYNC)],
                     total_calories: [rawCal(TODAY, 18, 19, 420, SAMSUNG), rawCal(TODAY, 18, 19, 415, HSYNC)] }));
-  eq('420, not 835', row(w, TODAY).ExerciseCal, 420);
+  eq('420 from Samsung, not 835 and not Health Sync\'s copy', row(w, TODAY).ExerciseCal, 420);
 }
 
 console.log('\n=== days follow Singapore time, not UTC ===');

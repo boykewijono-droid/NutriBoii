@@ -191,9 +191,15 @@ The app's **Logs** screen shows each post it made.
 
 ## How the numbers behave
 
-- **One source per day, never the sum.** Several apps write steps into Health
-  Connect. For each day and each measure, the single app with the largest
-  total is used, so two apps' counts are never added together.
+- **Samsung Health is the step count.** Several apps write steps into Health
+  Connect — Android'''s own counter and Health Sync both do on this phone. For
+  each day and each measure NutriBoii takes ONE source, never the sum, and
+  Samsung Health wins outright whenever it has anything for that day, so the
+  sheet matches what your phone shows. Another app only stands in when Samsung
+  is silent.
+- **The scale is a separate story.** Weight and body fat land in `Body Log`
+  and never touch the activity numbers, the `Baselines` tab or the pace
+  projection.
 - **Re-sent totals replace, they don't add.** If the phone sends a running
   daily total, 3,000 steps at 9:00 and 4,200 at 10:00, the Sheet shows 4,200,
   not 7,200. Sending the same data twice changes nothing.
