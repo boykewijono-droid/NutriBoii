@@ -74,9 +74,10 @@ ActiveCal | ExerciseCal | BMR | TDEE_Target | Deficit | GymDay | Notes
    not hardcode it: it changes with each InBody scan. Freezing it per row is
    deliberate, so that a new scan does not retroactively rewrite old days.
 
-6. **`GymDay`** — `Yes` or `No` is enough. He tracks which split in a
-   separate project, so you will not know it and should not ask twice. If he
-   happens to mention `Day 2`, record that instead; otherwise `Yes`/`No`.
+6. **`GymDay`** — usually fills itself. The phone sync marks it `Yes` when
+   Samsung Health records a strength session; a walk or a run does not count.
+   It only writes into an empty cell, so anything you or he put there stands.
+   If he mentions a split like `Day 2`, record that; otherwise leave it.
 
    Never ask how active his day was. The dashboard works that out from the
    synced numbers and shows it as **High / Medium / Low**: High for a workout

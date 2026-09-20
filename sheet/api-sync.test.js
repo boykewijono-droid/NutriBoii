@@ -139,7 +139,9 @@ const activeDay = (ymd, endH, kcal) => daily('calories', ymd, endH, kcal);
 const clippedDay = (field, ymd, startH, value) => ({ [field]: value, start_time: at(ymd, startH, 41987), end_time: at(ymd, 24) });
 const rawSteps = (ymd, h1, h2, count, origin) => ({ count, start_time: at(ymd, h1), end_time: at(ymd, h2), metadata: md(origin) });
 const rawCal = (ymd, h1, h2, calories, origin) => ({ calories, start_time: at(ymd, h1), end_time: at(ymd, h2), metadata: md(origin) });
-const session = (ymd, h1, h2, origin) => ({ type: '70', start_time: at(ymd, h1), end_time: at(ymd, h2), duration_seconds: (h2 - h1) * 3600, metadata: md(origin) });
+/** type is the Health Connect exercise type: 70 strength training, 79 walking */
+const session = (ymd, h1, h2, origin, type) => ({ type: String(type == null ? 70 : type),
+  start_time: at(ymd, h1), end_time: at(ymd, h2), duration_seconds: (h2 - h1) * 3600, metadata: md(origin) });
 const payload = (o) => Object.assign({ timestamp: new Date().toISOString(), app_version: '2.9.0' }, o);
 
 const row = (w, date) => {
@@ -439,6 +441,30 @@ console.log('\n=== a scale reading does not disturb the daily log ===');
   }));
   eq('steps still land in Daily Log', row(w, TODAY).Steps, 6000);
   eq('and the weigh-in is in Body Log', w.sheets['Body Log']._grid.slice(1)[0][1], 75.9);
+}
+
+
+console.log('\n=== a strength session is a gym day; a walk is not ===');
+{
+  const w = world();
+  call(w, payload({ exercise: [session(TODAY, 18, 19, SAMSUNG, 70)],       // strength training
+                    total_calories: [rawCal(TODAY, 18, 19, 420)] }));
+  eq('GymDay filled by the session type', row(w, TODAY).GymDay, 'Yes');
+
+  const w2 = world();
+  call(w2, payload({ exercise: [session(TODAY, 18, 19.4, SAMSUNG, 79)],    // a walk
+                     total_calories: [rawCal(TODAY, 18, 19.4, 446)] }));
+  eq('a walk leaves GymDay alone', row(w2, TODAY).GymDay, '');
+  eq('but its calories still count as exercise', row(w2, TODAY).ExerciseCal, 446);
+}
+
+console.log('\n=== an answer already in the sheet is never overwritten ===');
+{
+  const w = world();
+  w.sheets['Daily Log'].getRange(2, 1, 1, 14).setValues([[TODAY, '', 1500, '', '', '', '', '', '', 1672, '', '', 'No', '']]);
+  call(w, payload({ exercise: [session(TODAY, 18, 19, SAMSUNG, 70)],
+                    total_calories: [rawCal(TODAY, 18, 19, 420)] }));
+  eq('a "No" he or Claude wrote stands', row(w, TODAY).GymDay, 'No');
 }
 
 console.log('\n=== the app\'s Test Webhook button writes nothing ===');

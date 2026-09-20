@@ -392,6 +392,13 @@ var HS_KEEP_DAYS = 7;          // rebuild and keep this many days: covers a "Pas
  * it has any for that day, whatever Zepp Life, Health Sync or Android's own
  * step counter say. */
 var HS_PREFER = ['com.sec.android.app.shealth'];
+/* Health Connect exercise types that mean "he went to the gym". A walk (79),
+ * a run (56) or a hike (37) is exercise but not a gym day, and the difference
+ * is the whole reason the column exists. */
+var HS_GYM_TYPES = {
+  70: 'strength training', 81: 'weightlifting', 13: 'calisthenics',
+  10: 'boot camp', 36: 'high intensity interval training'
+};
 
 function hsSync(e) {
   var body;
@@ -432,6 +439,10 @@ function hsSync(e) {
       if (t.steps != null) p.steps = t.steps;
       if (t.activeCal != null) p.activecal = t.activeCal;
       if (t.exerciseCal != null) p.exercisecal = t.exerciseCal;
+      // A strength session fills GymDay, but only when nobody has said
+      // otherwise: a "No" he or Claude wrote is an answer, not an empty cell.
+      var at = findRow(sh, date);
+      if (t.gym && (!at || String(sh.getRange(at, 13).getValue() || '').trim() === '')) p.gymday = 'Yes';
       if (!Object.keys(p).length) return;
       var res = upsert(sh, DAILY_MAP, 14, date, p);
       if (res.created) {
@@ -573,7 +584,10 @@ function hsRecords(body) {
   add('steps', body.steps, function (r) { return r.count; });
   add('active', body.active_calories, function (r) { return r.calories; });
   add('total', body.total_calories, function (r) { return r.calories; });
-  add('exercise', body.exercise || body.exercise_sessions || body.exercises, function () { return 0; });
+  // Value is unused for a session, so it carries the Health Connect
+  // exercise type instead: 70 is strength training, 79 a walk.
+  add('exercise', body.exercise || body.exercise_sessions || body.exercises,
+      function (r) { var t = Number(r.type); return isNaN(t) ? 0 : t; });
   return out;
 }
 
@@ -624,8 +638,11 @@ function hsRollup(store, date) {
     });
   });
 
-  var sessions = recs.filter(function (r) { return r.type === 'exercise'; })
-    .map(function (r) { return [Date.parse(r.start), Date.parse(r.end)]; });
+  var sessionRecs = recs.filter(function (r) { return r.type === 'exercise'; });
+  var sessions = sessionRecs.map(function (r) { return [Date.parse(r.start), Date.parse(r.end)]; });
+  // A strength session says it was a gym day without anyone being asked.
+  var gym = null;
+  sessionRecs.forEach(function (r) { if (!gym && HS_GYM_TYPES[r.value]) gym = HS_GYM_TYPES[r.value]; });
 
   // Share of a record's time span inside an exercise session. A record that is
   // mostly outside every session (an all-day total, a walk) counts for nothing.
@@ -675,6 +692,7 @@ function hsRollup(store, date) {
   if (active && exercise && active.value <= exercise.value) active = null;   // workout-only, not all-day
   return {
     superseded: superseded,
+    gym: gym,
     steps: steps ? steps.value : null,
     activeCal: active ? active.value : null,
     exerciseCal: exercise ? exercise.value : null,
