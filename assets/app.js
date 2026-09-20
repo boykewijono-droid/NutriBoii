@@ -165,7 +165,7 @@ function tabUrl(tabName, key) {
          '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tabName) + '&t=' + Date.now();
 }
 
-function fetchTab(tabName, key, required) {
+function fetchTab(tabName, key, required, needs) {
   return fetch(tabUrl(tabName, key), { credentials: 'omit', cache: 'no-store' })
     .then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -175,7 +175,15 @@ function fetchTab(tabName, key, required) {
       // gviz hands back HTML when the sheet isn't public, or when the tab is missing.
       if (/^\s*</.test(t)) throw new Error('not-public');
       if (/google\.visualization\.Query\.setResponse/.test(t)) throw new Error('bad-tab');
-      return toObjects(parseCSV(t));
+      var rows = toObjects(parseCSV(t));
+      // ASK FOR A TAB THAT DOES NOT EXIST AND GVIZ HANDS BACK THE FIRST SHEET,
+      // with no hint that it did. Asking for "Body Log" returned the Daily Log,
+      // which parsed happily into 16 empty weigh-ins. So every tab has to prove
+      // it is the right one by carrying at least one column only it has.
+      if (rows.length && needs && !needs.some(function (k) { return k in rows[0]; })) {
+        throw new Error('bad-tab');
+      }
+      return rows;
     })
     .catch(function (e) {
       if (required) throw e;
@@ -1886,10 +1894,10 @@ function load() {
 
   var T = CFG.tabs || {};
   return Promise.all([
-    fetchTab(T.daily     || 'Daily Log', 'daily', true),
-    fetchTab(T.baselines || 'Baselines', 'baselines', false),
-    fetchTab(T.targets   || 'Targets',   'targets', false),
-    fetchTab(T.body      || 'Body Log',  'body',    false)
+    fetchTab(T.daily     || 'Daily Log', 'daily', true,  ['calories', 'protein_g', 'daytype']),
+    fetchTab(T.baselines || 'Baselines', 'baselines', false, ['skeletalmuscle_kg', 'bodyfatmass_kg']),
+    fetchTab(T.targets   || 'Targets',   'targets', false, ['key', 'metric', 'setting']),
+    fetchTab(T.body      || 'Body Log',  'body',    false, ['leanmass_kg', 'bonemass_kg', 'bmi', 'source'])
   ]).then(function (res) {
     M.today   = todayYMD();
     M.targets = resolveTargets(res[2]);
