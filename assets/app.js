@@ -1496,16 +1496,18 @@ function renderTrends() {
   var cur = M.scans.length ? M.scans[M.scans.length - 1] : null;
 
   var h = '<div class="grid g4">' +
-    cell('Weight', cur && cur.weight != null ? nf(cur.weight, 1) : null, 'kg') +
-    cell('Body fat', cur && cur.bf != null ? nf(cur.bf, 1) : null, '%') +
-    cell('Fat mass', cur && cur.fatMass != null ? nf(cur.fatMass, 1) : null, 'kg') +
-    cell('Goal', goal + '%', null) +
+    // Every figure here is measured, not estimated, and it is worth saying
+    // where and when: an InBody from a fortnight ago is not today's weight.
+    cell('Weight', cur && cur.weight != null ? nf(cur.weight, 1) : null, 'kg', null, scanSource(cur)) +
+    cell('Body fat', cur && cur.bf != null ? nf(cur.bf, 1) : null, '%', null, scanSource(cur)) +
+    cell('Fat mass', cur && cur.fatMass != null ? nf(cur.fatMass, 1) : null, 'kg', null, scanSource(cur)) +
+    cell('Goal', goal + '%', null, null, 'body fat') +
   '</div>';
 
   h += '<div class="grid g2">' + projectionCell(p, t) + rollingCell(rollingDeficit(M.today, CFG.rollingWindowDays || 7)) + '</div>';
 
   h += '<div class="sec"><div class="sec-head"><h2>Body composition</h2>' +
-    '<span class="lbl">' + M.scans.length + ' InBody scan' + (M.scans.length === 1 ? '' : 's') + '</span></div>' +
+    '<span class="lbl">Measured on an InBody · ' + M.scans.length + ' scan' + (M.scans.length === 1 ? '' : 's') + '</span></div>' +
     '<div class="chart" id="cBf"></div><div class="chart" id="cWt"></div>' +
     '<div class="chart" id="cFm"></div></div>';
 
@@ -1616,6 +1618,13 @@ function renderTrends() {
   });
 }
 
+/** Where a body figure came from, and when it was taken. */
+function scanSource(s) {
+  if (!s) return null;
+  return 'InBody · ' + fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }) +
+    (s.date === M.today ? '' : ' (' + relDay(s.date).toLowerCase() + ')');
+}
+
 function scanTable() {
   var rows = M.scans.slice().reverse().map(function (s, i, arr) {
     var prev = arr[i + 1];
@@ -1629,7 +1638,7 @@ function scanTable() {
       '<td class="opt">' + nf(s.bmr) + '</td>' +
       '<td class="opt">' + (dw == null ? '<span class="dash">—</span>' : signed(dw, 1)) + '</td></tr>';
   }).join('');
-  return '<div class="sec"><div class="sec-head"><h2>Scan history</h2><span class="lbl">Baselines tab</span></div>' +
+  return '<div class="sec"><div class="sec-head"><h2>Scan history</h2><span class="lbl">InBody · Baselines tab</span></div>' +
     '<div class="tw"><table><thead><tr><th>Date</th><th>Weight kg</th><th>Fat %</th><th>Fat kg</th>' +
     '<th>Muscle kg</th><th class="opt">BMR</th><th class="opt">Δ weight</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }

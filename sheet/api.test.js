@@ -352,8 +352,8 @@ console.log('\n=== logging a meal WITHOUT reading the day first ===');
   const lines = String(named.Notes).split('\n');
   ok('each meal is its own line in Notes', lines.length === 2, JSON.stringify(named.Notes));
   ok('a bullet and the meal\'s own calories in brackets',
-     lines[0] === '- home coffee + full cream milk (250)', lines[0]);
-  ok('second meal, its own calories', lines[1] === '- chicken rice, no skin (640)', lines[1]);
+     lines[0] === '- home coffee + full cream milk (250 kcal)', lines[0]);
+  ok('second meal, its own calories', lines[1] === '- chicken rice, no skin (640 kcal)', lines[1]);
   ok('every reply carries the Singapore time',
      /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM) SGT$/.test(call2.serverTime), call2.serverTime);
 }
@@ -397,7 +397,7 @@ console.log('\n=== the fat line must NOT wipe the day\'s meals ===');
   const named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
   const lines = String(named.Notes).split('\n');
   ok('three lines: two meals and the fat note', lines.length === 3, JSON.stringify(named.Notes));
-  ok('the first meal survived', lines[0] === '- home coffee + full cream milk (250)', lines[0]);
+  ok('the first meal survived', lines[0] === '- home coffee + full cream milk (250 kcal)', lines[0]);
   ok('the fat line is plain, no bullet, no calories',
      lines[2] === 'fat over from fried chicken + coconut rice', lines[2]);
 

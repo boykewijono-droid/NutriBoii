@@ -269,7 +269,7 @@ function appendMeal(sh, row, p) {
   if (meal) {
     var kcal = mealKcal(p);
     lines.push('- ' + (timed ? Utilities.formatDate(new Date(), 'Asia/Singapore', 'h:mm a') + ' ' : '') +
-      meal + (kcal == null ? '' : ' (' + kcal + ')'));
+      meal + (kcal == null ? '' : ' (' + kcal + ' kcal)'));
   }
   var plain = p.noteline == null ? '' : String(p.noteline).trim();
   if (plain) lines.push(plain);
