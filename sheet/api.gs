@@ -443,14 +443,102 @@ function hsSync(e) {
     Object.keys(store).forEach(function (k) { if (store[k].date < cutoff) delete store[k]; });
     hsSave(raw, store);
 
+    var scale = hsBody(body);
+
     var updated = Object.keys(days);
+    var weighed = scale ? Object.keys(scale) : [];
     return {
       ok: true, action: 'sync', received: incoming.length,
-      stored: Object.keys(store).length, days: days,
+      stored: Object.keys(store).length, days: days, body: scale,
+      // what ELSE the phone sent, so it is obvious which data types are on
+      sent: Object.keys(body).filter(function (k) { return Array.isArray(body[k]) && body[k].length; }),
       summary: incoming.length + ' record' + (incoming.length === 1 ? '' : 's') + ' received; ' +
-               (updated.length ? 'updated ' + updated.join(', ') : 'no daily totals changed')
+               (updated.length ? 'updated ' + updated.join(', ') : 'no daily totals changed') +
+               (weighed.length ? '; weigh-in ' + weighed.join(', ') : '')
     };
   } finally { lock.releaseLock(); }
+}
+
+/* --- body measurements: the daily scale ------------------------------- */
+/* A Mi Body Composition Scale reads through Zepp Life and reaches Health
+ * Connect the same way the steps do. These are point measurements, not
+ * totals, so the rule is the LAST reading of each day — a second weigh-in
+ * replaces the first rather than adding to it.
+ *
+ * They are kept in their own tab, well away from `Baselines`: the InBody is
+ * the north star for body composition, and a $25 scale's body fat is a trend
+ * line, not a measurement to plan against. */
+var BODY_TAB = 'Body Log';
+var BODY_HEAD = ['Date', 'Weight_kg', 'BodyFat_pct', 'LeanMass_kg', 'BoneMass_kg',
+                 'BodyWater_kg', 'BMI', 'Source', 'Measured'];
+var BODY_MAP = {
+  date: [1, false], weightkg: [2, true], bodyfatpct: [3, true], leanmasskg: [4, true],
+  bonemasskg: [5, true], bodywaterkg: [6, true], bmi: [7, true],
+  source: [8, false], measured: [9, false]
+};
+var BODY_FIELD = { weight: 'weightkg', bodyfat: 'bodyfatpct', lean: 'leanmasskg',
+                   bone: 'bonemasskg', water: 'bodywaterkg', bmi: 'bmi' };
+
+function hsBody(body) {
+  var recs = [];
+  function add(type, list, valueOf) {
+    (Array.isArray(list) ? list : []).forEach(function (rec) {
+      if (!rec || !rec.time) return;
+      var at = Date.parse(String(rec.time));
+      var value = Number(valueOf(rec));
+      if (isNaN(at) || isNaN(value) || !value) return;
+      var md = rec.metadata || {};
+      recs.push({ type: type, at: at, value: value, date: hsSgtDate(String(rec.time)),
+                  origin: String(md.data_origin || md.dataOrigin || 'unknown') });
+    });
+  }
+  add('weight',  body.weight,          function (r) { return r.kilograms; });
+  add('bodyfat', body.body_fat,        function (r) { return r.percentage; });
+  add('lean',    body.lean_body_mass,  function (r) { return r.kilograms; });
+  add('bone',    body.bone_mass,       function (r) { return r.kilograms; });
+  add('water',   body.body_water_mass, function (r) { return r.kilograms; });
+  add('bmi',     body.bmi,             function (r) { return r.value; });
+  if (!recs.length) return null;
+
+  // the last reading of the day wins, per measurement
+  var best = {};
+  recs.forEach(function (r) {
+    var k = r.date + '|' + r.type;
+    if (!best[k] || r.at > best[k].at) best[k] = r;
+  });
+
+  var sh = hsBodySheet();
+  var byDate = {};
+  Object.keys(best).forEach(function (k) {
+    var r = best[k];
+    (byDate[r.date] = byDate[r.date] || []).push(r);
+  });
+
+  var out = {};
+  Object.keys(byDate).sort().forEach(function (date) {
+    var p = {}, latest = null;
+    byDate[date].forEach(function (r) {
+      p[BODY_FIELD[r.type]] = Math.round(r.value * 100) / 100;
+      if (!latest || r.at > latest.at) latest = r;
+    });
+    p.source = latest.origin;
+    p.measured = Utilities.formatDate(new Date(latest.at), 'Asia/Singapore', "yyyy-MM-dd h:mm a");
+    upsert(sh, BODY_MAP, BODY_HEAD.length, date, p);
+    out[date] = p;
+  });
+  sortByDate(sh);
+  return out;
+}
+
+function hsBodySheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(BODY_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(BODY_TAB);
+    sh.getRange(1, 1, 1, BODY_HEAD.length).setValues([BODY_HEAD]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
 }
 
 /** Flatten the webhook payload into one list of records. */

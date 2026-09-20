@@ -19,7 +19,8 @@ window.NUTRIBOII_CONFIG = {
   tabs: {
     daily:     "Daily Log",
     baselines: "Baselines",
-    targets:   "Targets"
+    targets:   "Targets",
+    body:      "Body Log"     // daily scale readings, written by the phone sync
   },
 
   /* ------------------------------------------------------------------ */
@@ -43,8 +44,6 @@ window.NUTRIBOII_CONFIG = {
   timezone:  "Asia/Singapore",          // all day boundaries are SGT
   dayTypes:  ["Rest", "Busy", "Gym", "Treat"],
 
-  /* TDEE_Target = BMR + (ExerciseCal * 0.7) + ((ActiveCal - ExerciseCal) * 0.5)
-     Used to recompute the target when the Sheet's TDEE_Target cell is blank. */
   /* stepKcalPerKg puts a FLOOR under the day's activity: steps x this x your
      weight, used when it beats the calorie figures. Samsung shares its step
      count but not its activity calories, so without it a 13,500-step day can

@@ -33,6 +33,7 @@ function makeSheet(name, header) {
     getMaxRows: () => Math.max(grid.length, 1000),
     insertRowsAfter: () => {},
     hideSheet: () => { s._hidden = true; },
+    setFrozenRows: () => s,
     getRange: (r, c, nr, nc) => {
       nr = nr || 1; nc = nc || 1;
       const ensure = (rr) => { while (grid.length < rr) grid.push(new Array(n).fill('')); };
@@ -68,7 +69,9 @@ function world() {
 function call(w, body, params) {
   const ss = {
     getSheetByName: (x) => w.sheets[x] || null,
-    insertSheet: (x) => (w.sheets[x] = makeSheet(x, new Array(8).fill(''))),
+    insertSheet: (x) => (w.sheets[x] = makeSheet(x, x === 'Body Log'
+      ? ['Date','Weight_kg','BodyFat_pct','LeanMass_kg','BoneMass_kg','BodyWater_kg','BMI','Source','Measured']
+      : new Array(8).fill(''))),
   };
   let captured = null;
   const RealDate = Date;
@@ -377,6 +380,49 @@ console.log('\n=== a big walking day is not credited with nothing ===');
   eq('steps carry it, and the two are never added', d.TDEE_Target, Math.round(1672 + Math.max(fromCals, fromSteps)));
   eq('which is more than the calorie figures alone would give', d.TDEE_Target > Math.round(1672 + fromCals), true);
   eq('ActiveCal itself is untouched, still what the phone sent', d.ActiveCal, 454);
+}
+
+
+console.log('\n=== the daily scale: weight and body fat land in their own tab ===');
+{
+  const w = world();
+  const ZEPP = 'com.xiaomi.hm.health';
+  const r = call(w, payload({
+    weight: [{ kilograms: 76.4, time: at(YEST, 7.5), metadata: md(ZEPP) },
+             { kilograms: 75.85, time: at(TODAY, 7.2), metadata: md(ZEPP) },
+             { kilograms: 76.1, time: at(TODAY, 21), metadata: md(ZEPP) }],
+    body_fat: [{ percentage: 22.9, time: at(TODAY, 7.2), metadata: md(ZEPP) }],
+    lean_body_mass: [{ kilograms: 55.34, time: at(TODAY, 7.2), metadata: md(ZEPP) }],
+    bone_mass: [{ kilograms: 2.96, time: at(TODAY, 7.2), metadata: md(ZEPP) }],
+    bmi: [{ value: 23.6, time: at(TODAY, 7.2), metadata: md(ZEPP) }],
+  }));
+  const tab = w.sheets['Body Log'];
+  const row = (d) => { const x = tab._grid.slice(1).find(v => String(v[0]).slice(0, 10) === d); const o = {};
+    ['Date','Weight_kg','BodyFat_pct','LeanMass_kg','BoneMass_kg','BodyWater_kg','BMI','Source','Measured']
+      .forEach((h, i) => o[h] = x ? x[i] : null); return o; };
+  eq('a Body Log tab appears', !!tab, true);
+  eq('THE POINT: the last weigh-in of the day wins, not the first or the sum', row(TODAY).Weight_kg, 76.1);
+  eq('yesterday keeps its own reading', row(YEST).Weight_kg, 76.4);
+  eq('body fat from the scale', row(TODAY).BodyFat_pct, 22.9);
+  eq('lean mass and bone mass too', [row(TODAY).LeanMass_kg, row(TODAY).BoneMass_kg], [55.34, 2.96]);
+  eq('BMI', row(TODAY).BMI, 23.6);
+  eq('the source is recorded', row(TODAY).Source, ZEPP);
+  eq('the reply says which day was weighed', Object.keys(r.body).indexOf(TODAY) >= 0, true);
+  eq('and lists what the phone sent, so we can see what is switched on',
+     r.sent.sort().join(','), 'bmi,body_fat,bone_mass,lean_body_mass,weight');
+  eq('Baselines is untouched: the InBody stays the north star',
+     w.sheets['Baselines']._grid.slice(1).filter(x => x[0]).length, 1);
+}
+
+console.log('\n=== a scale reading does not disturb the daily log ===');
+{
+  const w = world();
+  call(w, payload({
+    steps: [stepsDay(TODAY, 12, 6000)],
+    weight: [{ kilograms: 75.9, time: at(TODAY, 7), metadata: md('com.xiaomi.hm.health') }],
+  }));
+  eq('steps still land in Daily Log', row(w, TODAY).Steps, 6000);
+  eq('and the weigh-in is in Body Log', w.sheets['Body Log']._grid.slice(1)[0][1], 75.9);
 }
 
 console.log('\n=== the app\'s Test Webhook button writes nothing ===');

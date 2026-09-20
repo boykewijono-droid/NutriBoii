@@ -245,6 +245,7 @@ var M = {          // the resolved model, rebuilt on every load
   days: {},        // ymd -> day object
   dates: [],       // sorted logged dates
   scans: [],       // InBody scans, ascending
+  scale: [],       // daily scale readings, ascending
   targets: {},
   first: null, last: null, today: todayYMD()
 };
@@ -273,6 +274,25 @@ function buildScans(rows) {
       date: date, weight: weight, bf: bf, fatMass: fm,
       muscle: num(r.skeletalmuscle_kg || r.skeletal_muscle_kg || r.muscle_kg),
       bmr: num(r.bmr), notes: str(r.notes)
+    };
+  }).filter(Boolean).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+}
+
+/** The daily scale (Mi Body Composition through Zepp Life), one row a day.
+ *  Deliberately a separate series from the InBody: the scale is frequent and
+ *  noisy, the InBody is occasional and trusted. */
+function buildScale(rows) {
+  return rows.map(function (r) {
+    var date = coerceDate(r.date);
+    if (!date) return null;
+    var weight = num(r.weight_kg || r.weight);
+    var bf = num(r.bodyfat_pct || r.body_fat_pct || r.bodyfat);
+    return {
+      date: date, weight: weight, bf: bf,
+      fatMass: weight != null && bf != null ? weight * bf / 100 : null,
+      muscle: num(r.leanmass_kg || r.lean_mass_kg || r.leanmass),
+      bone: num(r.bonemass_kg), water: num(r.bodywater_kg), bmi: num(r.bmi),
+      source: str(r.source), measured: str(r.measured)
     };
   }).filter(Boolean).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
 }
@@ -1504,21 +1524,37 @@ function renderTrends() {
   var t = M.targets, host = $('#view-trends');
   var p = projection(t);
   var goal = t.bodyfat_goal_pct == null ? 15 : t.bodyfat_goal_pct;
-  var cur = M.scans.length ? M.scans[M.scans.length - 1] : null;
+  // Which body-composition source the charts show. The InBody is the north
+  // star; the daily scale is the trend line. Only offered once the scale has
+  // actually sent something.
+  var hasScale = M.scale.length > 0;
+  if (!hasScale) bodySource = 'inbody';
+  var series = bodySource === 'scale' ? M.scale : M.scans;
+  var cur = series.length ? series[series.length - 1] : null;
 
-  var h = '<div class="grid g4">' +
+  var h = hasScale ? '<div class="sec-head"><div class="filters">' +
+      '<button type="button" data-body="inbody" aria-pressed="' + (bodySource === 'inbody') + '">InBody</button>' +
+      '<button type="button" data-body="scale" aria-pressed="' + (bodySource === 'scale') + '">Daily scale</button>' +
+    '</div><span class="lbl">' + (bodySource === 'scale'
+      ? M.scale.length + ' weigh-in' + (M.scale.length === 1 ? '' : 's') + ' · a trend line, not a measurement'
+      : M.scans.length + ' InBody scan' + (M.scans.length === 1 ? '' : 's') + ' · the one to plan against') +
+    '</span></div>' : '';
+
+  h += '<div class="grid g4">' +
     // Every figure here is measured, not estimated, and it is worth saying
     // where and when: an InBody from a fortnight ago is not today's weight.
-    cell('Weight', cur && cur.weight != null ? nf(cur.weight, 1) : null, 'kg', null, scanSource(cur)) +
-    cell('Body fat', cur && cur.bf != null ? nf(cur.bf, 1) : null, '%', null, scanSource(cur)) +
-    cell('Fat mass', cur && cur.fatMass != null ? nf(cur.fatMass, 1) : null, 'kg', null, scanSource(cur)) +
+    cell('Weight', cur && cur.weight != null ? nf(cur.weight, 1) : null, 'kg', null, bodySourceLabel(cur)) +
+    cell('Body fat', cur && cur.bf != null ? nf(cur.bf, 1) : null, '%', null, bodySourceLabel(cur)) +
+    cell('Fat mass', cur && cur.fatMass != null ? nf(cur.fatMass, 1) : null, 'kg', null, bodySourceLabel(cur)) +
     cell('Goal', goal + '%', null, null, 'body fat') +
   '</div>';
 
   h += '<div class="grid g2">' + projectionCell(p, t) + rollingCell(rollingDeficit(M.today, CFG.rollingWindowDays || 7)) + '</div>';
 
   h += '<div class="sec"><div class="sec-head"><h2>Body composition</h2>' +
-    '<span class="lbl">Measured on an InBody · ' + M.scans.length + ' scan' + (M.scans.length === 1 ? '' : 's') + '</span></div>' +
+    '<span class="lbl">' + (bodySource === 'scale'
+      ? 'Mi scale through Zepp Life · every weigh-in'
+      : 'Measured on an InBody · ' + M.scans.length + ' scan' + (M.scans.length === 1 ? '' : 's')) + '</span></div>' +
     '<div class="chart" id="cBf"></div><div class="chart" id="cWt"></div>' +
     '<div class="chart" id="cFm"></div></div>';
 
@@ -1529,9 +1565,9 @@ function renderTrends() {
   if (M.scans.length) h += scanTable();
   host.innerHTML = h;
 
-  var scans = M.scans.filter(function (s) { return s.bf != null; });
-  // One shared time axis for every body-composition chart, so the scans line up.
-  var all = M.scans;
+  var scans = series.filter(function (s) { return s.bf != null; });
+  // One shared time axis for every body-composition chart, so the points line up.
+  var all = series;
   var t0 = all.length ? parseYMD(all[0].date) : 0;
   var span = all.length > 1 ? parseYMD(all[all.length - 1].date) - t0 : 1;
   var x01 = function (s) {
@@ -1554,7 +1590,7 @@ function renderTrends() {
       });
   });
 
-  var ws = M.scans.filter(function (s) { return s.weight != null; });
+  var ws = series.filter(function (s) { return s.weight != null; });
   mountChart($('#cWt'), function (w) {
     return chartHead('Weight',
         '<span><i class="key"></i>kg, each scan</span>') +
@@ -1573,13 +1609,13 @@ function renderTrends() {
 
   // Fat mass gets its own chart rather than sharing the weight axis: the two
   // series differ by ~60kg, so one scale would flatten whichever lost.
-  var fm = M.scans.filter(function (s) { return s.fatMass != null; });
+  var fm = series.filter(function (s) { return s.fatMass != null; });
   mountChart($('#cFm'), function (w) {
     return chartHead('Fat mass',
         '<span><i class="key"></i>kg, each scan</span><span><i class="key t"></i>at ' + goal + '%</span>') +
       lineChart(w, {
         height: 180,
-        target: p.state === 'ok' ? p.current.fatMass - p.toLose : null,
+        target: bodySource === 'inbody' && p.state === 'ok' ? p.current.fatMass - p.toLose : null,
         fmtY: function (v) { return nf(v, 1); },
         emptyText: 'Add InBody scans to the Baselines tab',
         points: fm.map(function (s) {
@@ -1629,11 +1665,20 @@ function renderTrends() {
   });
 }
 
+/** Which body-composition source the Trends view is showing. */
+var bodySource = 'inbody';
+
 /** Where a body figure came from, and when it was taken. */
 function scanSource(s) {
   if (!s) return null;
   return 'InBody · ' + fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }) +
     (s.date === M.today ? '' : ' (' + relDay(s.date).toLowerCase() + ')');
+}
+function bodySourceLabel(s) {
+  if (!s) return null;
+  if (bodySource === 'inbody') return scanSource(s);
+  return 'Mi scale · ' + fmtDay(s.date, { weekday: undefined, day: 'numeric', month: 'short' }) +
+    (s.date === M.today ? ' (today)' : ' (' + relDay(s.date).toLowerCase() + ')');
 }
 
 function scanTable() {
@@ -1843,10 +1888,12 @@ function load() {
   return Promise.all([
     fetchTab(T.daily     || 'Daily Log', 'daily', true),
     fetchTab(T.baselines || 'Baselines', 'baselines', false),
-    fetchTab(T.targets   || 'Targets',   'targets', false)
+    fetchTab(T.targets   || 'Targets',   'targets', false),
+    fetchTab(T.body      || 'Body Log',  'body',    false)
   ]).then(function (res) {
     M.today   = todayYMD();
     M.targets = resolveTargets(res[2]);
+    M.scale   = buildScale(res[3]);
     M.scans   = buildScans(res[1]);
     M.days    = buildDays(res[0], M.scans, M.targets, M.today);
     M.dates   = Object.keys(M.days).sort();
@@ -1872,10 +1919,11 @@ function load() {
 
 /* --- events ------------------------------------------------------------- */
 document.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-view],[data-act],[data-day],[data-filter],[data-flagged]');
+  var t = e.target.closest('[data-view],[data-act],[data-day],[data-filter],[data-flagged],[data-body]');
   if (!t) return;
   if (t.dataset.view) return go(t.dataset.view);
   if (t.dataset.day) return openDay(t.dataset.day);
+  if (t.dataset.body) { bodySource = t.dataset.body; renderTrends(); return go('trends', true); }
   if (t.dataset.filter) { filter.type = t.dataset.filter; return renderHistory(); }
   if (t.dataset.flagged) { filter.flagged = !filter.flagged; return renderHistory(); }
   switch (t.dataset.act) {

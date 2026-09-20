@@ -122,8 +122,14 @@ day, fat over 80 g).
 **Week** — intake against target and daily deficit for the last 7 calendar
 days, plus the day-by-day table.
 
-**Trends** — body fat %, weight and fat mass across every InBody scan; intake
-and rolling deficit over 30 days; the scan history table.
+**Trends** — body fat %, weight and fat mass, with a toggle between **InBody**
+and the **daily scale** when a scale is syncing; intake and rolling deficit
+over 30 days; the scan history table. Every body figure says where it came
+from and when, because a fortnight-old scan is not today's weight.
+
+The two sources are never mixed. InBody scans live in `Baselines` and are what
+the pace projection is fitted to; daily scale readings live in `Body Log`,
+written by the phone sync, and are a trend line rather than a measurement.
 
 **History** — every calendar day since the first entry, filterable by day type
 or by flagged-only. Any day opens to its full row.

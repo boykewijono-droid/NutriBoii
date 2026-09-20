@@ -92,6 +92,27 @@ Sessions**.
 Prefer to pay, or to skip Obtainium? The [Play Store version](https://play.google.com/store/apps/details?id=com.hcwebhook.app)
 works exactly the same with every step here.
 
+### 3b. The daily scale, if you use one
+
+A Mi Body Composition Scale reaches Health Connect the same way the steps do:
+scale → Zepp Life → Health Sync → Samsung Health → Health Connect. If yours is
+already there, NutriBoii can take a weigh-in a day without you typing anything.
+
+- In HC Webhook, also switch on **Weight** and **Body Fat** (and **Lean Body
+  Mass**, **Bone Mass**, **BMI** if your scale reports them), and allow the
+  matching Health Connect permissions.
+- Readings land in their own **`Body Log`** tab, one row per day — the **last**
+  weigh-in of the day, since a second reading replaces the first rather than
+  adding to it.
+- Trends then offers a toggle: **InBody** or **Daily scale**.
+
+**The InBody stays the north star.** A £20 scale's body fat is a trend line,
+not a measurement: it is consistent enough to show a direction over a fortnight
+and not accurate enough to plan against. Nothing from the scale touches the
+`Baselines` tab, and the pace projection still uses InBody scans only.
+
+To seed some history the first time: **Manual Sync → Past 30 Days → Sync Now**.
+
 ### 4. Choose the data types
 
 In the app's **Data Types**, switch on the same four: **Steps**, **Active
