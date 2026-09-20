@@ -1414,8 +1414,19 @@ function renderWeek() {
   var gyms = days.filter(function (d) { return gymState(d) === 'yes'; }).length;
   var notYet = pending ? 'Today not counted yet' : null;
 
+  // "Days logged" is about the record, not the averages, so today counts as
+  // soon as it has food in it. Counting only FINISHED days made this read
+  // 6 / 7 for ever: today could never count, and by the time it did the
+  // window had already moved on.
+  var fed = days.filter(function (d) { return d.hasIntake; }).length;
+  var todayFed = days.some(function (d) { return d.date === M.today && d.hasIntake; });
+  var missing = n - fed;
+
   var h = '<div class="grid g4">' +
-    cell('Days logged', logged.length + ' / ' + n, null, null, pending ? '+ today, in progress' : null) +
+    cell('Days logged', fed + ' / ' + n, null, fed === n ? 'good' : '',
+         todayFed ? 'Today included, still running'
+                  : missing === 1 ? 'Today not logged yet'
+                  : 'Today and ' + (missing - 1) + ' other day' + (missing === 2 ? '' : 's') + ' not logged') +
     cell('Avg intake', avgCal == null ? null : nf(Math.round(avgCal)), 'kcal', null, avgCal == null ? null : notYet) +
     cell('Avg deficit', avgDef == null ? null : signed(Math.round(avgDef)), 'kcal',
          avgDef < 0 ? 'bad' : avgGoal == null || avgDef >= avgGoal ? 'good' : 'caution',
