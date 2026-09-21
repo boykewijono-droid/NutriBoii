@@ -170,9 +170,12 @@ than what today has already burned, and shown with a "~".
 
 **Today closes itself at midnight.** Nothing to close by hand. Food arrives
 meal by meal and activity every hour, so while the date is today both halves
-of the deficit are partial: the Today view shows what you've eaten, an
-estimate of what you've burned *so far*, the running deficit between them, and
-protein and fat with their balance — but today stays out of the 7-day and Week
+of the deficit are partial. The Today view answers one question first --
+**how much is left to eat** -- as the target less what you've eaten, said as
+"left" or "over" and never as a negative surplus. Under it sits the target and
+the sum that produced it, beside it the forecast burn the target is a share
+of, and in small print what you've burned so far and how your intake compares
+with it. Then protein and fat with their balance — but today stays out of the 7-day and Week
 averages, and low protein reads "g to go" rather than a warning. Fat is live
 all day, because it only ever goes up. At midnight the day is done and counts
 with whatever was logged; a late meal logged after midnight still lands on its

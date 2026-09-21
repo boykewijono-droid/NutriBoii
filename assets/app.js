@@ -579,16 +579,25 @@ function targetRule(t) {
   return (100 - deficitPct(t)) + '% of burn, never below BMR';
 }
 
-/** Where THIS day's target came from, in a few words: the percentage of the
- *  burn, or the BMR floor when that is what set it. Without this a target
- *  that lands near the BMR reads as if it were the BMR. */
-function targetBasis(d, t) {
+/** The target and the sum behind it, in one line, so the headline number
+ *  above it never has to be taken on trust: what the target is, what share of
+ *  which burn produced it, and - when the BMR floor is what set it - the
+ *  number the percentage would have given, and why it was overruled. */
+function targetLine(d, t) {
   var burn = expectedBurn(d), target = calorieTarget(d, t);
-  if (burn == null || target == null) return null;
-  return Math.round(burn * (1 - deficitPct(t) / 100)) >= target
-    ? (100 - deficitPct(t)) + '% of ' + (d.inProgress ? '~' : '') + nf(burn) + ' burn'
-    : 'your BMR, the floor';
+  if (target == null) return '';
+  var open = !!d.inProgress, tilde = open ? '~' : '';
+  var out = tilde + nf(target) + ' kcal target';
+  if (burn == null) return out;
+  var raw = Math.round(burn * (1 - deficitPct(t) / 100));
+  out += ' · ' + (100 - deficitPct(t)) + '% of ' + tilde + nf(burn) +
+         (open ? ' kcal forecast burn' : ' kcal burn');
+  if (raw < target && d.bmr != null) {
+    out += ' = ' + nf(raw) + ', held at your ' + nf(Math.round(d.bmr)) + ' kcal BMR';
+  }
+  return out;
 }
+
 
 /* --- how active the day was ------------------------------------------- */
 /** High / Medium / Low from what the day actually holds, so nobody has to
@@ -1102,53 +1111,62 @@ function heroProgress(d, t) {
   var burned = burnedSoFar(d);
   var synced = d.active != null || d.exercise != null;
   var target = calorieTarget(d, t), burn = expectedBurn(d);
-  // Intake stays white: the bar and the line under it already say where it
-  // sits against the target, and the deficit beside it is what should catch
-  // the eye.
-  // The running deficit is the number worth watching: what you have burned so
-  // far, less what you have eaten. It is the whole point of the dashboard, so
-  // it sits beside the intake rather than being held back until midnight.
+  var eaten = d.cal == null ? 0 : d.cal;
+
+  // ONE number, and it answers the only question this card is asked at 9pm:
+  // how much more can I eat? Everything else on it supports that number.
+  //
+  // It used to headline "burned so far minus eaten so far" while the line
+  // underneath compared eaten against the TARGET - two different sums, a few
+  // hundred calories apart, neither named as a comparison. Worse, a headline
+  // that went negative was called a "surplus", so what was actually left for
+  // dinner had to be worked out by hand after every meal.
+  var left = target == null ? null : Math.round(target - eaten);
+  var cls = energyClass(eaten, target, burn);
+  // Eaten against burned is still worth knowing, but it is a second opinion,
+  // not an instruction - so it goes in the small print, next to the burn.
   var run = burned != null && d.cal != null ? burned - d.cal : null;
-  return '<div class="slab">' +
-    '<div class="slab-top"><span class="lbl">Today · so far</span>' +
-      chip(d) +
-    '</div>' +
-    '<div class="figs">' +
-      (d.cal == null
-        ? '<div class="fig lead"><b class="words">No food yet</b><small>nothing eaten logged today</small></div>'
-        : '<div class="fig lead"><b>' + nf(d.cal) + '<span class="u">kcal</span></b><small>eaten so far</small></div>') +
-      (run == null ? '' :
-      // Resting burn accrues by the minute while food arrives in lumps, so a
-      // breakfast puts this number below zero every morning. That is not a
-      // surplus — the day has barely started. Early on it reads as being
-      // ahead of the burn, in amber; only later in the day is a negative
-      // number a real surplus.
-      (function () {
-        var early = dayFraction() < 0.6;
-        var cls = run >= 0 ? 'good' : early ? 'caution' : 'bad';
-        var label = run >= 0 ? 'deficit so far today'
-                  : early ? 'eaten ahead of burn so far' : 'surplus so far today';
-        return '<div class="fig big-deficit ' + cls + '"><b><span data-count="' + run + '">' +
-          signed(run) + '</span><span class="u">kcal</span></b><small>' + label + '</small></div>';
-      })()) +
-    '</div>' +
-    (d.cal == null
-      ? (target == null ? '' : '<div class="energy"><div class="energy-bal">Today\'s target ~' + nf(target) + ' kcal</div></div>')
-      : energyBar(d.cal, target, burn, true, targetBasis(d, t))) +
-    (burned == null ? '' :
-      '<div class="burn-line">≈' + nf(burned) + ' kcal burned so far · ' +
-        (synced ? 'resting burn to now + activity' : 'resting burn to now') +
-        (burn != null && burn > burned ? ' · on pace for ~' + nf(burn) + ' by midnight' : '') + '</div>') +
-    macroStats(d, t) +
+
+  var h = '<div class="slab">' +
+    '<div class="slab-top"><span class="lbl">Today · so far</span>' + chip(d) + '</div>' +
+    '<div class="figs">';
+
+  if (left != null) {
+    h += '<div class="fig headline ' + cls + '"><b><span data-count="' + Math.abs(left) + '">' +
+      nf(Math.abs(left)) + '</span><span class="u">kcal</span></b><small>' +
+      (left >= 0 ? 'left to eat today' : 'over today\'s target') + '</small></div>';
+  }
+  // The forecast burn stands beside it: the target is a share of this number,
+  // and this is what a long walk moves. In grey small print it explained
+  // nothing, and the target seemed to drift for no reason.
+  if (burn != null) {
+    h += '<div class="fig sub"><b>' + (d.inProgress ? '~' : '') + nf(burn) +
+      '<span class="u">kcal</span></b><small>forecast burn by midnight</small></div>';
+  }
+  h += (d.cal == null
+    ? '<div class="fig sub"><b class="words">No food yet</b><small>nothing eaten logged today</small></div>'
+    : '<div class="fig ' + (left == null ? 'lead' : 'sub') + '"><b>' + nf(d.cal) +
+      '<span class="u">kcal</span></b><small>eaten so far</small></div>');
+  h += '</div>';
+
+  if (target != null) {
+    h += '<div class="energy-bal target-line ' + cls + '">' + targetLine(d, t) + '</div>';
+  }
+  h += energyBar(eaten, target, burn);
+
+  if (burned != null) {
+    h += '<div class="burn-line">≈' + nf(burned) + ' kcal burned so far · ' +
+      (synced ? 'resting burn to now + activity' : 'resting burn to now') +
+      (run == null ? '' : ' · eaten ' + nf(Math.abs(run)) + ' kcal ' +
+        (run >= 0 ? 'less' : 'more') + ' than burned so far') + '</div>';
+  }
+
+  h += macroStats(d, t) +
     '<div class="energy-note">Today counts in the 7‑day average from midnight, when the day is done. ' +
-      'Nothing to close by hand.' +
-      (target == null ? ''
-        : burn != null && Math.round(burn * (1 - deficitPct(t) / 100)) < target
-          ? ' The target is normally ' + (100 - deficitPct(t)) + '% of the day\'s burn, but today it is held at your ' +
-            nf(target) + ' kcal BMR: a ' + deficitPct(t) + '% deficit on a day this quiet would mean eating below it.'
-          : ' The target is ' + (100 - deficitPct(t)) + '% of the day\'s burn, a ' + deficitPct(t) +
-            '% deficit, and never below your BMR.') + '</div>' +
+      'Nothing to close by hand. The target follows the forecast burn as the day goes on, ' +
+      'and never drops below your BMR.</div>' +
   '</div>';
+  return h;
 }
 
 /** Lime at or under the target; amber over it but still under the burn, so
@@ -1158,31 +1176,18 @@ function energyClass(eaten, target, burn) {
   return eaten <= target ? 'good' : burn != null && eaten <= burn ? 'caution' : 'bad';
 }
 
-/** Eaten against the calorie target, with the balance said in words. The
- *  track runs to the burn (today's is a forecast), so the gap between the
- *  target mark and the end is the deficit goal. Only a finished day labels
- *  the burn: today's forecast is already in the note below. */
-function energyBar(eaten, target, burn, open, basis) {
+/** Eaten against the calorie target, drawn. The track runs to the burn
+ *  (today's is a forecast), so the gap between the target mark and the end is
+ *  the deficit goal. The numbers are said above the bar now, beside the
+ *  headline they belong to, instead of being repeated underneath it. */
+function energyBar(eaten, target, burn) {
   if (eaten == null || (target == null && burn == null)) return '';
   var top = Math.max(burn || 0, target || 0, eaten) * (burn == null ? 1.15 : 1);
   var cls = energyClass(eaten, target, burn);
-  var bal = '';
-  if (target != null) {
-    var diff = Math.round(target - eaten), tl = (open ? '~' : '') + nf(target);
-    bal = diff >= 0
-      ? nf(diff) + ' kcal ' + (open ? 'left of' : 'under') + ' ' + (open ? 'today\'s' : 'your') + ' ' + tl + ' kcal target'
-      : nf(-diff) + ' kcal over ' + (open ? 'today\'s' : 'your') + ' ' + tl + ' kcal target';
-    // Say where the target came from. Without it, a target near the BMR reads
-    // as if it WERE the BMR, and nothing on screen says otherwise.
-    if (basis) bal += ' · ' + basis;
-  }
   return '<div class="energy"><div class="energy-track">' +
       '<div class="energy-fill ' + cls + '" style="width:0%" data-w="' + clamp(eaten / top * 100, 0, 100).toFixed(1) + '"></div>' +
       (target != null ? '<s style="left:' + clamp(target / top * 100, 0, 100).toFixed(1) + '%"></s>' : '') +
     '</div>' +
-    (bal ? '<div class="energy-bal ' + cls + '">' + bal + '</div>' : '') +
-    (burn != null && !open ? '<div class="energy-marks"><span>eaten</span><span>' +
-      (target != null ? 'target ' + nf(target) + ' · ' : '') + nf(burn) + ' kcal burned</span></div>' : '') +
   '</div>';
 }
 
@@ -1266,7 +1271,7 @@ function paintHero(root) {
     if (t0 == null) t0 = ts;
     var k = Math.min(1, (ts - t0) / dur);
     if (k >= 1) { el.textContent = end; return; }
-    el.textContent = signed(Math.round(to * (1 - Math.pow(1 - k, 3))));
+    el.textContent = nf(Math.round(to * (1 - Math.pow(1 - k, 3))));
     raf(step);
   });
 }
