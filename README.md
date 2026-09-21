@@ -170,15 +170,20 @@ than what today has already burned, and shown with a "~".
 
 **Today closes itself at midnight.** Nothing to close by hand. Food arrives
 meal by meal and activity every hour, so while the date is today both halves
-of the deficit are partial. The Today view leads with the number you are
-trying to move: **the deficit** -- the day's forecast burn less what you've
-eaten -- said as "deficit today" in green or "surplus today" in red, never as
-a signed number. Amber is still a deficit, just short of the 15% goal. It is
-measured against the forecast for the whole day, not the burn so far, which is
-the same sum the sheet's `Deficit` column uses, so the two can't disagree.
-Under it sits the target, the sum that produced it and how much of it is still
-yours to eat; beside it the forecast burn and what you've eaten. What you've
-burned *so far* drops to small print. Then protein and fat with their balance — but today stays out of the 7-day and Week
+of the deficit are partial. The Today view is **one picture of the day**: a
+bar carrying everything at once -- how much has been eaten, a mark where the
+plan sits, and the burn at the end, so the gap between the mark and the end
+*is* the deficit being aimed at, drawn to scale. Above it, the deficit in
+words ("deficit today" green, "surplus today" red, amber for a deficit that
+falls short of the plan) and how far the day is from the plan. Below it, one
+plain sentence -- "You are 232 kcal past the 1,768 you planned to eat, but
+still under ~2,080, what today burns" -- so nothing has to be worked out.
+
+The deficit is measured against the forecast for the *whole* day, not the burn
+so far, which is the sum the sheet's `Deficit` column uses too; a bar that
+filled with deficit instead of food would sit at 100% before breakfast, since
+eating nothing is the largest deficit there is. What you've burned so far
+drops to small print. Then protein and fat with their balance — but today stays out of the 7-day and Week
 averages, and low protein reads "g to go" rather than a warning. Fat is live
 all day, because it only ever goes up. At midnight the day is done and counts
 with whatever was logged; a late meal logged after midnight still lands on its

@@ -202,29 +202,38 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 /* what is left to eat: the one number this card exists to answer */
 .fig.headline b{animation:pop .5s var(--ease) both}
 .fig.headline.good b{text-shadow:0 0 26px rgba(180,211,54,.28)}
-/* the supporting figures, deliberately smaller: three numbers at 92px is
-   three headlines and no answer */
-.fig.sub b{font-size:clamp(30px,5.2vw,46px);letter-spacing:-.022em;color:var(--slab-fg)}
-.fig.sub .u{font-size:.26em}
-.fig.sub b.words{font-size:clamp(26px,4.4vw,36px)}
 @keyframes pop{from{opacity:0;transform:translateY(7px) scale(.97)}to{opacity:1;transform:none}}
 .burn-line{margin-top:13px;font-size:11.5px;line-height:1.5;color:var(--slab-dim)}
 
-/* energy line: eaten vs the calorie target (the tick), and what was burned */
-.energy{margin-top:26px}
-.energy-track{height:5px;background:var(--slab-line);position:relative}
-.energy-fill{position:absolute;inset:0 auto 0 0;background:var(--slab-fg);transition:width .7s var(--ease)}
-.energy-fill.good{background:var(--slab-good)}
-.energy-fill.caution{background:var(--slab-amber)}
-.energy-fill.bad{background:var(--slab-bad)}
-.energy-track s{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--slab-fg);text-decoration:none}
-.energy-bal{margin-top:11px;font-size:12.5px;line-height:1.45;color:var(--slab-fg)}
-.energy-bal.good{color:var(--slab-good)}
-.energy-bal.caution{color:var(--slab-amber)}
-.energy-bal.bad{color:var(--slab-bad)}
-/* the target line sits above the bar, directly under the number it explains */
-.target-line{margin-top:12px}
-.target-line + .energy{margin-top:14px}
+/* ---- the goal: one bar, one sentence -------------------------------- */
+.goal{margin:22px 0 0}
+.goal-top{display:flex;align-items:baseline;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.goal-of{text-align:right;display:flex;flex-direction:column;gap:5px;align-items:flex-end;color:var(--slab-fg)}
+.goal-of.good{color:var(--slab-good)}
+.goal-of.caution{color:var(--slab-amber)}
+.goal-of.bad{color:var(--slab-bad)}
+.goal-of b{font-family:var(--f-display);font-weight:500;font-size:clamp(26px,4.4vw,38px);
+  line-height:.9;letter-spacing:-.02em}
+.goal-of small{font-size:11.5px;color:var(--slab-dim)}
+.goal-track{position:relative;height:9px;background:var(--slab-line);margin-top:18px}
+.goal-fill{position:absolute;inset:0 auto 0 0;background:var(--slab-fg);transition:width .8s var(--ease)}
+.goal-fill.good{background:var(--slab-good)}
+.goal-fill.caution{background:var(--slab-amber)}
+.goal-fill.bad{background:var(--slab-bad)}
+.goal-track s{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--slab-fg);
+  text-decoration:none}
+.goal-track s.s-burn{background:var(--slab-dim)}
+/* the three numbers the bar is made of, in the order the bar draws them */
+.goal-keys{display:flex;justify-content:space-between;gap:12px;margin-top:11px;
+  font-size:11.5px;color:var(--slab-fg)}
+.goal-keys i{font-style:normal;display:block;font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--slab-dim);margin-bottom:2px}
+.goal-keys .k-plan{text-align:center}
+.goal-keys .k-burn{text-align:right}
+.goal-say{margin-top:15px;font-size:13px;line-height:1.5;color:var(--slab-fg);max-width:54ch}
+.goal-say.caution{color:var(--slab-amber)}
+.goal-say.bad{color:var(--slab-bad)}
+
 .energy-note{margin-top:14px;font-size:11.5px;line-height:1.55;color:var(--slab-dim);max-width:62ch}
 
 /* protein and fat at a glance, in plain words: no "floor" or "ceiling" */

@@ -579,31 +579,6 @@ function targetRule(t) {
   return (100 - deficitPct(t)) + '% of burn, never below BMR';
 }
 
-/** The target and the sum behind it, in one line, so the headline number
- *  above it never has to be taken on trust: what the target is, what share of
- *  which burn produced it, and - when the BMR floor is what set it - the
- *  number the percentage would have given, and why it was overruled. */
-function targetLine(d, t) {
-  var burn = expectedBurn(d), target = calorieTarget(d, t);
-  if (target == null) return '';
-  var open = !!d.inProgress, tilde = open ? '~' : '';
-  var out = tilde + nf(target) + ' kcal target';
-  if (burn == null) return out;
-  var raw = Math.round(burn * (1 - deficitPct(t) / 100));
-  out += ' · ' + (100 - deficitPct(t)) + '% of ' + tilde + nf(burn) +
-         (open ? ' kcal forecast burn' : ' kcal burn');
-  if (raw < target && d.bmr != null) {
-    out += ' = ' + nf(raw) + ', held at your ' + nf(Math.round(d.bmr)) + ' kcal BMR';
-  }
-  // What the target still allows, which is the number a meal is planned
-  // against. It sits here rather than in the headline: the headline answers
-  // "am I in deficit", this answers "how much more can I eat".
-  var eaten = d.cal == null ? 0 : d.cal, diff = Math.round(target - eaten);
-  out += ' · ' + (diff >= 0 ? nf(diff) + ' kcal still to eat' : nf(-diff) + ' kcal over it');
-  return out;
-}
-
-
 /* --- how active the day was ------------------------------------------- */
 /** High / Medium / Low from what the day actually holds, so nobody has to
  *  answer a question about it. A real workout (or a logged gym day) is High;
@@ -1112,68 +1087,120 @@ function lastDayStrip(t) {
  *  eaten against today's calorie target, an estimate of what has been burned
  *  up to now, and protein and fat with their balance. The day's deficit is
  *  held back until it is closed. */
+/** Today in one sentence, for someone who has read nothing else on the page:
+ *  where the day stands and what would change it. No jargon, no percentages,
+ *  and never "you failed" - what is still true, and what the next meal would
+ *  have to be. */
+function dayStory(d, t) {
+  var burn = expectedBurn(d), target = calorieTarget(d, t);
+  if (burn == null || target == null) return '';
+  var eaten = d.cal == null ? 0 : d.cal;
+  var gap = Math.round(burn - eaten), over = Math.round(eaten - target);
+  var open = !!d.inProgress;
+  if (d.cal == null) {
+    return 'Nothing logged yet. Eat up to ' + nf(target) + ' kcal today and you hit the plan.';
+  }
+  if (over <= 0) {
+    return 'You have ' + nf(-over) + ' kcal left before ' + nf(target) + ', the day\'s plan. ' +
+      (open ? 'Stay under it and today is a full day of progress.'
+            : 'You finished under it: a full day of progress.');
+  }
+  if (gap > 0) {
+    return 'You are ' + nf(over) + ' kcal past the ' + nf(target) + ' you planned to eat, but still under ' +
+      (open ? '~' : '') + nf(burn) + ', what today burns. Fat still comes off today, just slower than planned.';
+  }
+  return 'You have eaten ' + nf(-gap) + ' kcal more than today burns. Today puts a little fat on rather than taking it off' +
+    (open ? ', unless the rest of the day is spent moving.' : '.');
+}
+
+/** The hero: one picture of the day, one sentence, and nothing to work out.
+ *
+ *  Two numbers used to compete here - the deficit against the burn, and the
+ *  gap against the plan - and both were true, which is exactly why the card
+ *  could not be read. They are one fact from two ends: 80 kcal of deficit IS
+ *  232 kcal past the plan. So there is one bar with everything on it (what
+ *  was eaten, where the plan sits, where the burn ends), one headline number,
+ *  and one sentence saying what it means.
+ *
+ *  The bar fills with food eaten, never with "progress": a bar that showed
+ *  the deficit would sit at 100% before breakfast, since eating nothing is
+ *  the largest deficit there is. */
 function heroProgress(d, t) {
   var burned = burnedSoFar(d);
   var synced = d.active != null || d.exercise != null;
   var target = calorieTarget(d, t), burn = expectedBurn(d);
   var eaten = d.cal == null ? 0 : d.cal;
-
-  // ONE number, and it is the one he is trying to move: what today burns,
-  // less what he ate. Green when that is a deficit, red when it is a surplus,
-  // in the words he uses for it.
-  //
-  // Measured against the FULL day's forecast burn, never against the burn so
-  // far: resting burn arrives by the minute while food arrives in lumps, so
-  // breakfast against burn-so-far reads as a surplus every single morning.
-  // The forecast basis is also how the sheet's own Deficit column is worked
-  // out (TDEE - Calories), so the screen and the sheet cannot disagree.
+  var open = !!d.inProgress, tilde = open ? '~' : '';
+  // Today's deficit, against the whole day's forecast burn - not the burn so
+  // far, which arrives by the minute and made every breakfast a "surplus".
+  // It is also how the sheet's own Deficit column is worked out.
   var gap = burn == null ? null : Math.round(burn - eaten);
-  // Amber is still a deficit, just a smaller one than planned: at or past the
-  // 15% goal is green, short of it amber, past the burn red. The bar has
-  // always read this way, so number and bar move together.
-  var cls = energyClass(eaten, target, burn) || (gap != null && gap < 0 ? 'bad' : 'good');
-  // Eaten against burned is still worth knowing, but it is a second opinion,
-  // not an instruction - so it goes in the small print, next to the burn.
-  var run = burned != null && d.cal != null ? burned - d.cal : null;
+  // Green once the day is inside the plan, amber while it is still a deficit
+  // but past the plan, red once more was eaten than burned. The bar, the
+  // number and the sentence all take this one class, so colour never has to
+  // be interpreted twice.
+  var cls = energyClass(eaten, target, burn);
 
   var h = '<div class="slab">' +
-    '<div class="slab-top"><span class="lbl">Today · so far</span>' + chip(d) + '</div>' +
-    '<div class="figs">';
+    '<div class="slab-top"><span class="lbl">Today · so far</span>' + chip(d) + '</div>';
 
-  if (gap != null) {
-    h += '<div class="fig headline ' + cls + '"><b><span data-count="' + Math.abs(gap) + '">' +
-      nf(Math.abs(gap)) + '</span><span class="u">kcal</span></b><small>' +
-      (gap >= 0 ? 'deficit today' : 'surplus today') + '</small></div>';
-  }
-  // The forecast burn stands beside it: the target is a share of this number,
-  // and this is what a long walk moves. In grey small print it explained
-  // nothing, and the target seemed to drift for no reason.
-  if (burn != null) {
-    h += '<div class="fig sub"><b>' + (d.inProgress ? '~' : '') + nf(burn) +
-      '<span class="u">kcal</span></b><small>forecast burn by midnight</small></div>';
-  }
-  h += (d.cal == null
-    ? '<div class="fig sub"><b class="words">No food yet</b><small>nothing eaten logged today</small></div>'
-    : '<div class="fig ' + (gap == null ? 'lead' : 'sub') + '"><b>' + nf(d.cal) +
-      '<span class="u">kcal</span></b><small>eaten so far</small></div>');
-  h += '</div>';
+  if (burn == null || target == null) {
+    // No forecast yet (too little history): show what is known, claim nothing.
+    h += '<div class="figs"><div class="fig lead"><b>' +
+      (d.cal == null ? '<span class="words">No food yet</span>' : nf(d.cal) + '<span class="u">kcal</span>') +
+      '</b><small>eaten so far</small></div></div>';
+  } else {
+    var over = Math.round(eaten - target);
+    // An empty day earns no colour: green before the first meal would be
+    // congratulating him for not having eaten breakfast yet.
+    var headCls = d.cal == null ? '' : cls;
+    h += '<div class="goal"><div class="goal-top">' +
+      '<div class="fig headline ' + headCls + '">' +
+        (d.cal == null
+          ? '<b class="words">No food yet</b><small>nothing logged today</small>'
+          : '<b><span data-count="' + Math.abs(gap) + '">' + nf(Math.abs(gap)) + '</span>' +
+            '<span class="u">kcal</span></b><small>' +
+            (gap >= 0 ? 'deficit today' : 'surplus today') + '</small>') +
+      '</div>' +
+      '<div class="goal-of ' + headCls + '"><b>' +
+        (d.cal == null ? nf(target) : nf(Math.abs(over))) + '</b><small>' +
+        (d.cal == null ? 'kcal to eat today'
+          : over <= 0 ? 'kcal left of the plan' : 'kcal past the plan') + '</small></div>' +
+    '</div>';
 
-  if (target != null) {
-    h += '<div class="energy-bal target-line ' + cls + '">' + targetLine(d, t) + '</div>';
+    // One bar carrying the whole day: how much has been eaten, where the plan
+    // sits, where the burn ends. The gap between the plan mark and the end of
+    // the track IS the deficit being aimed at, drawn to scale.
+    var top = Math.max(burn, eaten, target);
+    h += '<div class="goal-track">' +
+        '<div class="goal-fill ' + cls + '" style="width:0%" data-w="' + clamp(eaten / top * 100, 0, 100).toFixed(1) + '"></div>' +
+        '<s style="left:' + clamp(target / top * 100, 0, 100).toFixed(1) + '%"></s>' +
+        // the burn only needs its own mark when eating has pushed the track
+        // past it; otherwise the burn IS the end of the track
+        (eaten > burn ? '<s class="s-burn" style="left:' + clamp(burn / top * 100, 0, 100).toFixed(1) + '%"></s>' : '') +
+      '</div>' +
+      '<div class="goal-keys">' +
+        '<span><i>eaten</i>' + nf(eaten) + '</span>' +
+        '<span class="k-plan"><i>plan</i>' + tilde + nf(target) + '</span>' +
+        '<span class="k-burn"><i>burn</i>' + tilde + nf(burn) + '</span>' +
+      '</div>' +
+      '<div class="goal-say ' + cls + '">' + dayStory(d, t) + '</div>' +
+    '</div>';
   }
-  h += energyBar(eaten, target, burn);
 
   if (burned != null) {
     h += '<div class="burn-line">≈' + nf(burned) + ' kcal burned so far · ' +
       (synced ? 'resting burn to now + activity' : 'resting burn to now') +
-      (run == null ? '' : ' · eaten ' + nf(Math.abs(run)) + ' kcal ' +
-        (run >= 0 ? 'less' : 'more') + ' than burned so far') + '</div>';
+      (target != null && burn != null && Math.round(burn * (1 - deficitPct(t) / 100)) < target
+        ? ' · the plan is held at your ' + nf(Math.round(d.bmr)) + ' kcal BMR, the floor'
+        : '') + '</div>';
   }
 
   h += macroStats(d, t) +
-    '<div class="energy-note">Today counts in the 7‑day average from midnight, when the day is done. ' +
-      'Nothing to close by hand. The target follows the forecast burn as the day goes on, ' +
-      'and never drops below your BMR.</div>' +
+    '<div class="energy-note">Eat less than you burn and fat comes off; the plan is to end each day about ' +
+      deficitPct(t) + '% under what you burned, which is the pace the projection assumes. ' +
+      'Today counts in the 7‑day average from midnight, when the day is done. ' +
+      'Nothing to close by hand.</div>' +
   '</div>';
   return h;
 }
@@ -1183,21 +1210,6 @@ function heroProgress(d, t) {
 function energyClass(eaten, target, burn) {
   if (target == null) return burn != null && eaten > burn ? 'bad' : '';
   return eaten <= target ? 'good' : burn != null && eaten <= burn ? 'caution' : 'bad';
-}
-
-/** Eaten against the calorie target, drawn. The track runs to the burn
- *  (today's is a forecast), so the gap between the target mark and the end is
- *  the deficit goal. The numbers are said above the bar now, beside the
- *  headline they belong to, instead of being repeated underneath it. */
-function energyBar(eaten, target, burn) {
-  if (eaten == null || (target == null && burn == null)) return '';
-  var top = Math.max(burn || 0, target || 0, eaten) * (burn == null ? 1.15 : 1);
-  var cls = energyClass(eaten, target, burn);
-  return '<div class="energy"><div class="energy-track">' +
-      '<div class="energy-fill ' + cls + '" style="width:0%" data-w="' + clamp(eaten / top * 100, 0, 100).toFixed(1) + '"></div>' +
-      (target != null ? '<s style="left:' + clamp(target / top * 100, 0, 100).toFixed(1) + '%"></s>' : '') +
-    '</div>' +
-  '</div>';
 }
 
 /** Estimated calories burned from midnight until now: resting burn for the
@@ -1262,11 +1274,13 @@ function paintHero(root) {
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   var raf = window.requestAnimationFrame;
 
-  var bar = root.querySelector('.energy-fill[data-w]');
-  if (bar) {
-    var w = bar.getAttribute('data-w') + '%';
-    if (reduce || !raf) bar.style.width = w;
-    else raf(function () { bar.style.width = w; });
+  var bars = root.querySelectorAll('[data-w]');
+  for (var i = 0; i < bars.length; i++) {
+    (function (bar) {
+      var w = bar.getAttribute('data-w') + '%';
+      if (reduce || !raf) bar.style.width = w;
+      else raf(function () { bar.style.width = w; });
+    })(bars[i]);
   }
 
   var el = root.querySelector('[data-count]');
