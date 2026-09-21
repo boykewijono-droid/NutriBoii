@@ -595,6 +595,11 @@ function targetLine(d, t) {
   if (raw < target && d.bmr != null) {
     out += ' = ' + nf(raw) + ', held at your ' + nf(Math.round(d.bmr)) + ' kcal BMR';
   }
+  // What the target still allows, which is the number a meal is planned
+  // against. It sits here rather than in the headline: the headline answers
+  // "am I in deficit", this answers "how much more can I eat".
+  var eaten = d.cal == null ? 0 : d.cal, diff = Math.round(target - eaten);
+  out += ' · ' + (diff >= 0 ? nf(diff) + ' kcal still to eat' : nf(-diff) + ' kcal over it');
   return out;
 }
 
@@ -1113,16 +1118,20 @@ function heroProgress(d, t) {
   var target = calorieTarget(d, t), burn = expectedBurn(d);
   var eaten = d.cal == null ? 0 : d.cal;
 
-  // ONE number, and it answers the only question this card is asked at 9pm:
-  // how much more can I eat? Everything else on it supports that number.
+  // ONE number, and it is the one he is trying to move: what today burns,
+  // less what he ate. Green when that is a deficit, red when it is a surplus,
+  // in the words he uses for it.
   //
-  // It used to headline "burned so far minus eaten so far" while the line
-  // underneath compared eaten against the TARGET - two different sums, a few
-  // hundred calories apart, neither named as a comparison. Worse, a headline
-  // that went negative was called a "surplus", so what was actually left for
-  // dinner had to be worked out by hand after every meal.
-  var left = target == null ? null : Math.round(target - eaten);
-  var cls = energyClass(eaten, target, burn);
+  // Measured against the FULL day's forecast burn, never against the burn so
+  // far: resting burn arrives by the minute while food arrives in lumps, so
+  // breakfast against burn-so-far reads as a surplus every single morning.
+  // The forecast basis is also how the sheet's own Deficit column is worked
+  // out (TDEE - Calories), so the screen and the sheet cannot disagree.
+  var gap = burn == null ? null : Math.round(burn - eaten);
+  // Amber is still a deficit, just a smaller one than planned: at or past the
+  // 15% goal is green, short of it amber, past the burn red. The bar has
+  // always read this way, so number and bar move together.
+  var cls = energyClass(eaten, target, burn) || (gap != null && gap < 0 ? 'bad' : 'good');
   // Eaten against burned is still worth knowing, but it is a second opinion,
   // not an instruction - so it goes in the small print, next to the burn.
   var run = burned != null && d.cal != null ? burned - d.cal : null;
@@ -1131,10 +1140,10 @@ function heroProgress(d, t) {
     '<div class="slab-top"><span class="lbl">Today · so far</span>' + chip(d) + '</div>' +
     '<div class="figs">';
 
-  if (left != null) {
-    h += '<div class="fig headline ' + cls + '"><b><span data-count="' + Math.abs(left) + '">' +
-      nf(Math.abs(left)) + '</span><span class="u">kcal</span></b><small>' +
-      (left >= 0 ? 'left to eat today' : 'over today\'s target') + '</small></div>';
+  if (gap != null) {
+    h += '<div class="fig headline ' + cls + '"><b><span data-count="' + Math.abs(gap) + '">' +
+      nf(Math.abs(gap)) + '</span><span class="u">kcal</span></b><small>' +
+      (gap >= 0 ? 'deficit today' : 'surplus today') + '</small></div>';
   }
   // The forecast burn stands beside it: the target is a share of this number,
   // and this is what a long walk moves. In grey small print it explained
@@ -1145,7 +1154,7 @@ function heroProgress(d, t) {
   }
   h += (d.cal == null
     ? '<div class="fig sub"><b class="words">No food yet</b><small>nothing eaten logged today</small></div>'
-    : '<div class="fig ' + (left == null ? 'lead' : 'sub') + '"><b>' + nf(d.cal) +
+    : '<div class="fig ' + (gap == null ? 'lead' : 'sub') + '"><b>' + nf(d.cal) +
       '<span class="u">kcal</span></b><small>eaten so far</small></div>');
   h += '</div>';
 

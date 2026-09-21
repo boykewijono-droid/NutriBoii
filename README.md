@@ -170,12 +170,15 @@ than what today has already burned, and shown with a "~".
 
 **Today closes itself at midnight.** Nothing to close by hand. Food arrives
 meal by meal and activity every hour, so while the date is today both halves
-of the deficit are partial. The Today view answers one question first --
-**how much is left to eat** -- as the target less what you've eaten, said as
-"left" or "over" and never as a negative surplus. Under it sits the target and
-the sum that produced it, beside it the forecast burn the target is a share
-of, and in small print what you've burned so far and how your intake compares
-with it. Then protein and fat with their balance — but today stays out of the 7-day and Week
+of the deficit are partial. The Today view leads with the number you are
+trying to move: **the deficit** -- the day's forecast burn less what you've
+eaten -- said as "deficit today" in green or "surplus today" in red, never as
+a signed number. Amber is still a deficit, just short of the 15% goal. It is
+measured against the forecast for the whole day, not the burn so far, which is
+the same sum the sheet's `Deficit` column uses, so the two can't disagree.
+Under it sits the target, the sum that produced it and how much of it is still
+yours to eat; beside it the forecast burn and what you've eaten. What you've
+burned *so far* drops to small print. Then protein and fat with their balance — but today stays out of the 7-day and Week
 averages, and low protein reads "g to go" rather than a warning. Fat is live
 all day, because it only ever goes up. At midnight the day is done and counts
 with whatever was logged; a late meal logged after midnight still lands on its
