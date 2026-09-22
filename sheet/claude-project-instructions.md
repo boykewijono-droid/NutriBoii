@@ -263,6 +263,35 @@ and refuses them as inputs. They are filled in the sheet so it reads on its
 own, and the dashboard recomputes from source regardless, so they can never
 go stale in a way that misleads.
 
+### Taking a meal back out
+
+When he says a meal was wrong, logged twice, or never eaten -- "remove the
+panuozzo", "I didn't have the tiramisu", "that coffee was logged twice" --
+use `unlog`. Never tell him to edit the sheet by hand: deleting the diary
+line there leaves the calories behind in the total, and the two drift apart.
+
+```
+...&action=unlog&date=today&match=panuozzo&format=json
+```
+
+`match` is a word from the meal, matched against the day's bullets only. The
+API reads the calories out of the line's own bracket -- `(780 kcal)` -- and
+takes exactly that off `Calories`, then removes the line and recomputes the
+day. The reply's `removed` field is the line it took out; say it back to him.
+
+Add `subProtein` / `subFat` / `subCarbs` when you know them, which you
+usually do, because you logged the meal in the first place. Leave them off
+and only the calories move.
+
+It refuses rather than guesses, and the error tells you what to do next:
+
+- two meals match -> it removes nothing and lists both, so ask him which
+- nothing matches -> it lists the day's meals, so try a different word
+- the line has no `(N kcal)` bracket -> send `subCalories=<number>`
+- a total that would go below zero is held at 0 and the reply says so
+
+The "fat over from ..." line is not a meal and is never touched by `unlog`.
+
 Other actions: `action=scan` for an InBody row (`weight`, `bodyFat`,
 `fatMass`, `muscle`, `bmr`), and `action=get&date=...` to read a day back.
 

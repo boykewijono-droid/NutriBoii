@@ -259,6 +259,16 @@ rather than inventing a fifth category.
 
 ---
 
+## Undoing a meal
+
+Logging adds; `unlog` takes back. `action=unlog&date=today&match=panuozzo`
+finds that one bullet in the day's diary, reads the calories out of its own
+bracket, subtracts exactly those from the day's total, removes the line and
+recomputes the day. It exists because removing a line by hand leaves its
+calories behind in `Calories`, and the diary and the total then disagree with
+nothing on screen to say which is right. It refuses rather than guesses: two
+matches remove nothing and the error lists both.
+
 ## Keeping it private
 
 The Sheet must be link-readable for a static page to read it. If that is not
