@@ -331,11 +331,23 @@ function unlogMeal(p) {
       throw new Error('No meal on ' + date + ' matches "' + needle + '". The day holds: ' +
         (bullets.length ? bullets.join(' | ') : 'no meals yet') + '.');
     }
+    var dupes = 0;
     if (hits.length > 1) {
-      var which = [];
-      for (var j = 0; j < hits.length; j++) which.push(lines[hits[j]].trim());
-      throw new Error(hits.length + ' meals on ' + date + ' match "' + needle +
-        '". Be more specific: ' + which.join(' | ') + '.');
+      var which = [], same = true;
+      for (var j = 0; j < hits.length; j++) {
+        which.push(lines[hits[j]].trim());
+        if (lines[hits[j]].trim() !== lines[hits[0]].trim()) same = false;
+      }
+      // Two lines with the SAME text are the "logged it twice" case, and no
+      // wording can tell them apart — asking the caller to be more specific
+      // would be asking for the impossible. Removing either is the same act,
+      // so take the last one and say what happened.
+      if (!same) {
+        throw new Error(hits.length + ' meals on ' + date + ' match "' + needle +
+          '". Be more specific: ' + which.join(' | ') + '.');
+      }
+      dupes = hits.length;
+      hits = [hits[hits.length - 1]];
     }
 
     var line = lines[hits[0]];
@@ -361,6 +373,10 @@ function unlogMeal(p) {
       if (!col || seen[col]) continue;
       var v = toNum(subs[k]);
       if (v == null) throw new Error('"' + k + '" must be a number (got "' + subs[k] + '").');
+      // unlog only ever takes away. A negative would quietly ADD, through an
+      // action whose whole name promises the opposite.
+      if (v < 0) throw new Error('"' + k + '" cannot be negative (got ' + v +
+        '). unlog only ever takes calories off; to add, use action=log.');
       seen[col] = 1;
       var had = sh.getRange(row, col).getValue();
       var base = (had === '' || had == null || isNaN(had)) ? 0 : Number(had);
@@ -377,8 +393,11 @@ function unlogMeal(p) {
     return {
       ok: true, action: 'unlog', date: date,
       removed: line.trim(), kcal: kcal, totals: totals,
+      duplicates: dupes || undefined,
       clamped: clamped.length ? clamped : undefined,
-      summary: 'Removed "' + line.trim() + '" and took ' + kcal + ' kcal back off ' + date +
+      summary: 'Removed ' + (dupes ? 'one of ' + dupes + ' identical lines, ' : '') +
+        '"' + line.trim() + '" and took ' + kcal + ' kcal back off ' + date +
+        (dupes ? ' (' + (dupes - 1) + ' still there)' : '') +
         (clamped.length ? ' (' + clamped.join(', ') + ' would have gone below zero, so held at 0)' : '') + '.'
     };
   } finally {

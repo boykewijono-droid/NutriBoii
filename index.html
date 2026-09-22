@@ -7,19 +7,16 @@
 <meta name="description" content="Daily nutrition, activity and body-composition tracking.">
 <meta name="theme-color" content="#E9E4D8">
 <script>
-/* Pick the theme BEFORE anything paints, so dark and night modes never flash
-   light first. app.js takes over once it loads. The 19 and 7 are the Night
-   hours; keep them in step with nightHours in assets/config.js. */
+/* Pick the theme BEFORE anything paints, so dark mode never flashes light
+   first. app.js takes over once it loads. A retired "night" choice still in
+   someone's storage falls through to Auto, which is where app.js moves it. */
 (function () {
   var m = 'system';
   try { m = localStorage.getItem('nutriboii.theme') || 'system'; } catch (e) {}
   var dark;
   if (m === 'dark') dark = true;
   else if (m === 'light') dark = false;
-  else if (m === 'night') {
-    var h = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', hourCycle: 'h23' }).format(new Date());
-    dark = h >= 19 || h < 7;
-  } else dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  else dark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#121210' : '#E9E4D8');
 })();

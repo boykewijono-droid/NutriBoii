@@ -192,18 +192,28 @@ function fetchTab(tabName, key, required, needs) {
 }
 
 /* ======================================================================
-   Theme: Auto (follows the phone), Light, Dark, and Night (dark between
-   the Singapore hours in config.nightHours). The <head> of index.html
+   Theme: Auto (follows the phone), Light, Dark. The <head> of index.html
    applies the same choice before first paint, so there is no light flash.
+
+   There was a fourth, "Night", which went dark between two Singapore hours
+   of its own. It duplicated Auto — a phone's dark mode is already scheduled
+   — while being free to disagree with it, and it was the only mode that
+   changed appearance while you were looking at the page. Anyone still
+   holding it is moved to Auto below.
    ====================================================================== */
 var THEME_KEY = 'nutriboii.theme';
-var THEMES = ['system', 'light', 'dark', 'night'];
-var THEME_NAMES = { system: 'Auto', light: 'Light', dark: 'Dark', night: 'Night' };
+var THEMES = ['system', 'light', 'dark'];
+var THEME_NAMES = { system: 'Auto', light: 'Light', dark: 'Dark' };
 var themeMemory = null;           // used when localStorage is unavailable
 
 function themeMode() {
   var m = themeMemory;
   try { m = localStorage.getItem(THEME_KEY) || m; } catch (e) {}
+  if (m === 'night') {            // retired: settle them on Auto, once
+    themeMemory = 'system';
+    try { localStorage.setItem(THEME_KEY, 'system'); } catch (e) {}
+    return 'system';
+  }
   return THEMES.indexOf(m) >= 0 ? m : 'system';
 }
 function sgtClock() {
@@ -212,24 +222,18 @@ function sgtClock() {
   var get = function (t) { return +(parts.filter(function (p) { return p.type === t; })[0] || { value: 0 }).value; };
   return { h: get('hour'), m: get('minute') };
 }
-function isNight() {
-  var nh = CFG.nightHours || [19, 7], h = sgtClock().h;
-  return nh[0] > nh[1] ? (h >= nh[0] || h < nh[1]) : (h >= nh[0] && h < nh[1]);
-}
 function applyTheme() {
   var m = themeMode();
-  var dark = m === 'dark' ? true : m === 'light' ? false : m === 'night' ? isNight()
+  var dark = m === 'dark' ? true : m === 'light' ? false
            : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   var root = document.documentElement, next = dark ? 'dark' : 'light';
   if (root.getAttribute('data-theme') !== next) root.setAttribute('data-theme', next);
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', dark ? '#121210' : '#E9E4D8');
-  var nh = CFG.nightHours || [19, 7];
   var label = $('#themeText'), btn = $('#themeBtn');
   if (label) label.textContent = THEME_NAMES[m];
   if (btn) {
-    var what = m === 'night' ? 'Night: dark from ' + nh[0] + ':00 to ' + nh[1] + ':00 Singapore time'
-             : m === 'system' ? 'Auto: follows your phone' : THEME_NAMES[m];
+    var what = m === 'system' ? 'Auto: follows your phone' : THEME_NAMES[m];
     btn.title = what;
     btn.setAttribute('aria-label', 'Theme ' + what + '. Tap to change.');
   }
@@ -558,7 +562,12 @@ function expectedBurn(d) {
   if (vals.length < 3) return (d.active != null || d.exercise != null) ? d.tdee : null;
   var c = sgtClock(), left = 1 - (c.h * 60 + c.m) / 1440;
   var more = Math.max(0, mean(vals) - soFar) * left;
-  return Math.round((d.bmr + soFar + more) / 10) * 10;
+  // Rounding to the nearest 10 can land BELOW the BMR on a day with no
+  // activity at all — 1,672 becomes 1,670 — and then the plan (which is
+  // floored at the BMR) sits above the burn, drawing its mark past the end of
+  // the bar and implying you may eat more than the day burns. A day can never
+  // burn less than lying still.
+  return Math.max(Math.round((d.bmr + soFar + more) / 10) * 10, Math.round(d.bmr));
 }
 /** What to eat to hit the deficit goal: the burn less deficit_goal_pct, and
  *  never below the day's BMR. */

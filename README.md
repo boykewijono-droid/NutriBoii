@@ -5,9 +5,8 @@ Static HTML on GitHub Pages, no backend, no build step, no scheduled job.
 
 **Activity sync from Samsung Health, hourly: [SYNC.md](SYNC.md)**
 
-**Night mode:** the button beside *Refresh* cycles **Auto** (follows your
-phone) → **Light** → **Dark** → **Night** (dark from 7pm to 7am Singapore
-time).
+**Theme:** the button beside *Refresh* cycles **Auto** (follows your phone)
+→ **Light** → **Dark**.
 
 **Setup: [SETUP.md](SETUP.md)** — the Sheet and the repo already exist, so
 what is left is about five minutes.

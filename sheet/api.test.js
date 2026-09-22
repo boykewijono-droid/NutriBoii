@@ -539,6 +539,64 @@ console.log('\n=== unlog holds at zero rather than going negative ===');
   ok('and the reply says so plainly', /held at 0/.test(out.summary), out.summary);
 }
 
+
+console.log('\n=== unlog: the same meal logged twice can actually be undone ===');
+{
+  // "that coffee got logged twice" was refused with "be more specific",
+  // between two lines whose text is identical. No wording could satisfy it.
+  const { sheets, store } = setup();
+  for (let i = 0; i < 2; i++) asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-22', addCalories: '80', mealNote: 'office coffee + low fat milk' }));
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'office coffee' }));
+  const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
+  ok('it removes one of them instead of refusing', out.ok, out.error);
+  ok('exactly one copy is left', String(o.Notes).split('office coffee').length - 1 === 1, String(o.Notes));
+  ok('and only one meal came off the total', o.Calories === 80, 'got ' + o.Calories);
+  ok('the reply says it was one of two identical lines',
+     out.duplicates === 2 && /one of 2 identical lines/.test(out.summary), out.summary);
+
+  // a THIRD identical one, to be sure it goes one at a time
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-22', addCalories: '80', mealNote: 'office coffee + low fat milk' }));
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'office coffee' }));
+  const o2 = {}; DAILY_HDR.forEach((h, i) => o2[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
+  ok('one at a time, never all of them', String(o2.Notes).split('office coffee').length - 1 === 1, String(o2.Notes));
+}
+
+console.log('\n=== unlog: meals that only LOOK alike are still refused ===');
+{
+  const { sheets, store } = setup();
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-22', addCalories: '80', mealNote: 'office coffee + low fat milk' }));
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-22', addCalories: '250', mealNote: 'office coffee + full cream milk' }));
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'office coffee' }));
+  ok('different text means a real choice, so it still refuses', !out.ok && /Be more specific/.test(out.error), JSON.stringify(out));
+  ok('and nothing was removed', rowOf(sheets, 'Daily Log', '2026-09-22')[2] === 330,
+     String(rowOf(sheets, 'Daily Log', '2026-09-22')[2]));
+}
+
+console.log('\n=== unlog never ADDS, whatever it is sent ===');
+{
+  // subCalories=-300 through an action whose name promises the opposite
+  const { sheets, store } = setup();
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-22', addCalories: '500', addProtein: '20', mealNote: 'lunch' }));
+  const neg = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'lunch', subCalories: '-300' }));
+  ok('a negative subCalories is refused', !neg.ok && /cannot be negative/.test(neg.error), JSON.stringify(neg));
+  ok('and the day is untouched', rowOf(sheets, 'Daily Log', '2026-09-22')[2] === 500,
+     String(rowOf(sheets, 'Daily Log', '2026-09-22')[2]));
+  const negP = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'lunch', subProtein: '-5' }));
+  ok('a negative macro is refused too', !negP.ok && /cannot be negative/.test(negP.error), JSON.stringify(negP));
+  ok('the meal is still there after a refusal', /lunch/.test(String(rowOf(sheets, 'Daily Log', '2026-09-22')[13])),
+     String(rowOf(sheets, 'Daily Log', '2026-09-22')[13]));
+}
+
 console.log('\n' + '='.repeat(46));
 console.log('  ' + pass + ' passed, ' + fail + ' failed');
 console.log('='.repeat(46));

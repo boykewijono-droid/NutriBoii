@@ -80,9 +80,5 @@ window.NUTRIBOII_CONFIG = {
      pushes activity on its own schedule (set in the Health Connect Webhook
      app, 60 min to start); this only makes sure a page left open shows it
      without a manual refresh. 0 turns it off. */
-  autoRefreshMinutes: 10,
-
-  /* "Night" theme: dark from the first hour until the second, Singapore time.
-     If you change these, change the same two numbers in index.html <head>. */
-  nightHours: [19, 7]
+  autoRefreshMinutes: 10
 };
