@@ -111,8 +111,9 @@ function handle(e, verb) {
     else if (action === 'scan') out = addScan(p);
     else if (action === 'get')  out = getDay(p);
     else if (action === 'delete') out = deleteDay(p);
+    else if (action === 'unlog') out = unlogMeal(p);
     else if (action === 'sync') out = hsSync(e);
-    else throw new Error('Unknown action "' + action + '". Use log, scan, get, delete, sync or ping.');
+    else throw new Error('Unknown action "' + action + '". Use log, unlog, scan, get, delete, sync or ping.');
 
     if (out && typeof out === 'object') out.serverTime = nowSGT();
     return asHtml ? htmlReply(out) : jsonReply(out);
@@ -279,6 +280,110 @@ function appendMeal(sh, row, p) {
   var all = lines.join('\n');
   sh.getRange(row, 14).setValue(cur ? cur + '\n' + all : all);
   return all;
+}
+
+/** Take a meal back out: remove its line from the diary AND its calories
+ *  from the day's total, in one call.
+ *
+ *  Logging was one-way until now. A meal logged by mistake could only be
+ *  fixed by hand-editing the sheet, and deleting the note line by hand leaves
+ *  the calories behind in the total — which is exactly how 22 Sept ended up
+ *  with a diary reading 1,915 and a Calories cell reading 1,895.
+ *
+ *  The calories come out of the line's own bracket, "(780 kcal)", so there is
+ *  nothing to remember and nothing to work out. Macros are not in the line,
+ *  so pass subProtein / subFat / subCarbs to take those back too; leave them
+ *  off and only the calories move.
+ *
+ *      action=unlog&date=today&match=panuozzo
+ *
+ *  It refuses rather than guesses: no match, or more than one, and it returns
+ *  the day's bullets so the caller can be specific. */
+var SUB_MAP = {
+  subcalories: 3, subcal: 3, subkcal: 3,
+  subprotein: 4, subproteing: 4,
+  subfat: 5, subfatg: 5,
+  subcarbs: 6, subcarbsg: 6
+};
+
+function unlogMeal(p) {
+  var needle = String(p.match == null ? '' : p.match).trim();
+  if (!needle) throw new Error('unlog needs match=<a word from the meal>, e.g. match=panuozzo.');
+
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
+  try {
+    var sh = mustGet(DAILY);
+    var date = resolveDate(p.date);
+    var row = findRow(sh, date);
+    if (!row) throw new Error('Nothing logged for ' + date + ', so there is nothing to remove.');
+
+    var cur = String(sh.getRange(row, 14).getValue() || '');
+    var lines = cur.split('\n');
+    var bullets = [], hits = [];
+    var low = needle.toLowerCase();
+    for (var i = 0; i < lines.length; i++) {
+      if (!/^\s*-\s+/.test(lines[i])) continue;      // meals only, never the fat line
+      bullets.push(lines[i].trim());
+      if (lines[i].toLowerCase().indexOf(low) >= 0) hits.push(i);
+    }
+    if (!hits.length) {
+      throw new Error('No meal on ' + date + ' matches "' + needle + '". The day holds: ' +
+        (bullets.length ? bullets.join(' | ') : 'no meals yet') + '.');
+    }
+    if (hits.length > 1) {
+      var which = [];
+      for (var j = 0; j < hits.length; j++) which.push(lines[hits[j]].trim());
+      throw new Error(hits.length + ' meals on ' + date + ' match "' + needle +
+        '". Be more specific: ' + which.join(' | ') + '.');
+    }
+
+    var line = lines[hits[0]];
+    // "(780 kcal)" - the meal's own figure, written when it was logged
+    var m = line.match(/\((\d+(?:\.\d+)?)\s*kcal\)\s*$/i);
+    var kcal = m ? Number(m[1]) : null;
+    var override = toNum(p.subcalories != null ? p.subcalories : (p.subcal != null ? p.subcal : p.subkcal));
+    if (override != null) kcal = override;
+    if (kcal == null) {
+      throw new Error('"' + line.trim() + '" carries no calories in brackets. ' +
+        'Send subCalories=<number> to say how many to take off.');
+    }
+
+    // Take the calories (and any macros offered) back off the totals. Never
+    // below zero: a negative day is a symptom, not a number worth keeping.
+    var totals = {}, seen = {}, clamped = [];
+    var subs = { subcalories: kcal };
+    for (var key in p) {
+      if (SUB_MAP[key] && SUB_MAP[key] !== 3) subs[key] = p[key];
+    }
+    for (var k in subs) {
+      var col = SUB_MAP[k];
+      if (!col || seen[col]) continue;
+      var v = toNum(subs[k]);
+      if (v == null) throw new Error('"' + k + '" must be a number (got "' + subs[k] + '").');
+      seen[col] = 1;
+      var had = sh.getRange(row, col).getValue();
+      var base = (had === '' || had == null || isNaN(had)) ? 0 : Number(had);
+      var left = Math.round((base - v) * 10) / 10;
+      if (left < 0) { clamped.push(headerName(sh, col)); left = 0; }
+      sh.getRange(row, col).setValue(left);
+      totals[headerName(sh, col)] = left;
+    }
+
+    lines.splice(hits[0], 1);
+    sh.getRange(row, 14).setValue(lines.join('\n').replace(/^\n+|\n+$/g, ''));
+    writeDerived(sh, row);
+
+    return {
+      ok: true, action: 'unlog', date: date,
+      removed: line.trim(), kcal: kcal, totals: totals,
+      clamped: clamped.length ? clamped : undefined,
+      summary: 'Removed "' + line.trim() + '" and took ' + kcal + ' kcal back off ' + date +
+        (clamped.length ? ' (' + clamped.join(', ') + ' would have gone below zero, so held at 0)' : '') + '.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** This meal's calories: whatever addCalories carried in the same call. */
@@ -1051,6 +1156,7 @@ function headingFor(o) {
   if (o.action === 'get')  return o.found ? 'NutriBoii' : 'Nothing logged';
   if (o.action === 'scan') return o.created ? 'Scan saved' : 'Scan updated';
   if (o.action === 'delete') return o.deleted ? 'Deleted' : 'Nothing to delete';
+  if (o.action === 'unlog')  return 'Meal removed';
   return o.created ? 'Logged' : 'Updated';
 }
 

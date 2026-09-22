@@ -416,6 +416,129 @@ console.log('\n=== a meal with no calories still gets its bullet ===');
   ok('bullet, no empty brackets', r.meal === '- black coffee', r.meal);
 }
 
+
+console.log('\n=== unlog: a meal comes back out of BOTH the diary and the total ===');
+{
+  const { sheets, store } = setup();
+  const log = (kcal, pro, note) => asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-22', addCalories: String(kcal), addProtein: String(pro), mealNote: note }));
+  log(80, 2, 'office coffee + low fat milk');
+  log(780, 48, 'pesto chicken panuozzo, mesclun, red onion, mozzarella');
+  log(145, 3, 'tiramisu, 50g');
+  const named = () => { const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]); return o; };
+  ok('three meals logged', named().Calories === 1005, 'got ' + named().Calories);
+
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'panuozzo' }));
+  ok('it reports what it removed', out.ok && /panuozzo/.test(out.removed), JSON.stringify(out));
+  ok('the calories come from the line\'s own bracket', out.kcal === 780, String(out.kcal));
+  const after = named();
+  ok('THE POINT: the total drops by exactly that', after.Calories === 225, 'got ' + after.Calories);
+  ok('the line is gone from the diary', !/panuozzo/.test(String(after.Notes)), String(after.Notes));
+  ok('the other meals are untouched',
+     /office coffee/.test(String(after.Notes)) && /tiramisu/.test(String(after.Notes)), String(after.Notes));
+  ok('no blank line left where it was', !/\n\n/.test(String(after.Notes)), JSON.stringify(String(after.Notes)));
+  ok('macros stay put unless asked for', after.Protein_g === 53, 'got ' + after.Protein_g);
+  ok('the deficit is recomputed, not left stale', after.Deficit === '' || after.Deficit == null ||
+     typeof after.Deficit === 'number', String(after.Deficit));
+}
+
+console.log('\n=== unlog: macros come back too, when they are offered ===');
+{
+  const { sheets, store } = setup();
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-22',
+    addCalories: '780', addProtein: '48', addFat: '30', addCarbs: '70', mealNote: 'pesto chicken panuozzo' }));
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-22',
+    addCalories: '145', addProtein: '3', addFat: '9', addCarbs: '15', mealNote: 'tiramisu' }));
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'panuozzo', subProtein: '48', subFat: '30', subCarbs: '70' }));
+  const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
+  ok('calories, protein, fat and carbs all come off',
+     o.Calories === 145 && o.Protein_g === 3 && o.Fat_g === 9 && o.Carbs_g === 15, JSON.stringify(o));
+  ok('and the reply says what each became', out.totals && out.totals.Calories === 145 && out.totals.Protein_g === 3,
+     JSON.stringify(out.totals));
+}
+
+console.log('\n=== unlog refuses rather than guesses ===');
+{
+  const { sheets, store } = setup();
+  const log = (kcal, note) => asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-22', addCalories: String(kcal), mealNote: note }));
+  log(250, 'home coffee + full cream milk');
+  log(80, 'office coffee + low fat milk');
+  log(540, 'romaine, edamame, egg salad');
+
+  const two = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'coffee' }));
+  ok('two matches removes nothing', !two.ok && /2 meals/.test(two.error), JSON.stringify(two));
+  ok('and it lists them so the caller can be specific', /full cream/.test(two.error) && /low fat/.test(two.error), two.error);
+  const still = {}; DAILY_HDR.forEach((h, i) => still[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
+  ok('the day is untouched after a refusal', still.Calories === 870, 'got ' + still.Calories);
+
+  const none = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'laksa' }));
+  ok('no match removes nothing, and says what IS there',
+     !none.ok && /No meal/.test(none.error) && /romaine/.test(none.error), JSON.stringify(none));
+
+  const oneMore = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'low fat' }));
+  ok('a specific enough word works', oneMore.ok && /low fat/.test(oneMore.removed), JSON.stringify(oneMore));
+
+  const noDay = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-01-01', match: 'anything' }));
+  ok('a day that was never logged is an error, not a new row',
+     !noDay.ok && /Nothing logged/.test(noDay.error), JSON.stringify(noDay));
+
+  const noMatch = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22' }));
+  ok('and match is required', !noMatch.ok && /match=/.test(noMatch.error), JSON.stringify(noMatch));
+}
+
+console.log('\n=== unlog never touches the fat line, only meals ===');
+{
+  const { sheets, store } = setup();
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-22',
+    addCalories: '740', mealNote: 'char kway teow' }));
+  asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-22',
+    noteLine: 'fat over from char kway teow' }));
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'char kway teow' }));
+  const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
+  ok('the meal bullet goes', out.ok && !/- char kway teow/.test(String(o.Notes)), String(o.Notes));
+  ok('the fat line stays: it is not a meal and carries no calories',
+     /fat over from char kway teow/.test(String(o.Notes)), String(o.Notes));
+  ok('the total drops by the meal only', o.Calories === 0, 'got ' + o.Calories);
+}
+
+console.log('\n=== unlog: a line with no bracket asks, it does not invent ===');
+{
+  const { sheets, store } = setup();
+  const sh = sheets['Daily Log'];
+  sh.getRange(2, 1, 1, 14).setValues([['2026-09-22', '', 900, '', '', '', '', '', '', 1672, '', '', '', '- mystery supper']]);
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'mystery' }));
+  ok('it refuses and says how to proceed', !out.ok && /subCalories/.test(out.error), JSON.stringify(out));
+  ok('nothing was removed meanwhile', rowOf(sheets, 'Daily Log', '2026-09-22')[2] === 900);
+
+  const told = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'mystery', subCalories: '400' }));
+  ok('told the number, it obeys', told.ok && told.kcal === 400, JSON.stringify(told));
+  ok('and the total comes down', rowOf(sheets, 'Daily Log', '2026-09-22')[2] === 500,
+     String(rowOf(sheets, 'Daily Log', '2026-09-22')[2]));
+}
+
+console.log('\n=== unlog holds at zero rather than going negative ===');
+{
+  const { sheets, store } = setup();
+  const sh = sheets['Daily Log'];
+  sh.getRange(2, 1, 1, 14).setValues([['2026-09-22', '', 300, 10, '', '', '', '', '', 1672, '', '', '', '- big dinner (900 kcal)']]);
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
+    date: '2026-09-22', match: 'dinner' }));
+  ok('a total that would go below zero is held at zero',
+     out.ok && rowOf(sheets, 'Daily Log', '2026-09-22')[2] === 0, JSON.stringify(out));
+  ok('and the reply says so plainly', /held at 0/.test(out.summary), out.summary);
+}
+
 console.log('\n' + '='.repeat(46));
 console.log('  ' + pass + ' passed, ' + fail + ' failed');
 console.log('='.repeat(46));

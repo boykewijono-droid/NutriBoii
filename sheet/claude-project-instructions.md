@@ -213,7 +213,7 @@ suggests. After adding a scan, use its `BMR` for subsequent daily rows.
 The sheet has a write endpoint. Use it for every write.
 
 ```
-https://script.google.com/macros/s/AKfycbz9WFqNTJZu5SgrGcuPmZDZWo4L6kJnPQD3UQ4Pz5SRLRYm2157zH3RbAvikgspQYM/exec?token=5be21e52e98649f898709abf&action=log&date=YYYY-MM-DD&<field>=<value>&...
+<YOUR_EXEC_URL>?token=<YOUR_TOKEN>&action=log&date=YYYY-MM-DD&<field>=<value>&...
 
 ```
 
