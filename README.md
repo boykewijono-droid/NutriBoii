@@ -258,6 +258,15 @@ rather than inventing a fifth category.
 
 ---
 
+## The diary checks itself
+
+Each meal bullet carries its own calories, so the bullets should add up to
+`Calories`. When every bullet is priced and the two disagree by more than 5
+kcal, the note says so — both numbers and the gap — and leaves the judgement
+to you. It exists because 22 Sept sat at 1,915 in the diary and 1,895 in the
+total for a day, with nothing anywhere saying which to believe. A bullet with
+no calories in brackets silences the check rather than making it guess.
+
 ## Undoing a meal
 
 Logging adds; `unlog` takes back. `action=unlog&date=today&match=panuozzo`

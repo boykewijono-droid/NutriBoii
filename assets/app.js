@@ -1056,7 +1056,7 @@ function renderToday() {
 
   if (d.notes) {
     h += '<div class="sec"><div class="note' + (d.flagged ? ' warn' : '') + '">' +
-         '<span class="lbl">Note</span>' + noteHtml(d.notes) + '</div></div>';
+         '<span class="lbl">Note</span>' + noteHtml(d.notes) + diaryCheckLine(d) + '</div></div>';
   }
   host.innerHTML = h;
   paintHero(host);
@@ -1310,6 +1310,43 @@ function paintHero(root) {
 
 /** Notes are a food diary now: one timestamped line per meal, written by the
  *  API with the sheet's own clock. Keep the lines apart on screen. */
+/** Does the diary add up to the day's total?
+ *
+ *  Every meal bullet carries its own calories, so the bullets should sum to
+ *  Calories. They can drift apart — a line removed by hand leaves its
+ *  calories in the total, a meal logged with the wrong figure leaves the
+ *  bracket right and the total wrong — and 22 Sept sat at 1,915 in the diary
+ *  and 1,895 in the total with nothing anywhere saying which to believe.
+ *
+ *  Returns null unless it can be sure: every bullet must carry a bracket
+ *  (one that does not is a meal whose calories were never counted, which is
+ *  a different thing), and small rounding is ignored.
+ */
+function diaryCheck(d) {
+  if (!d || d.cal == null || !d.notes) return null;
+  var lines = String(d.notes).split(/\r?\n/), sum = 0, bullets = 0, unpriced = 0;
+  for (var i = 0; i < lines.length; i++) {
+    if (!/^\s*[-\u2022*]\s/.test(lines[i])) continue;
+    bullets++;
+    var m = lines[i].match(/\((\d+(?:\.\d+)?)\s*kcal\)\s*$/i);
+    if (m) sum += Number(m[1]); else unpriced++;
+  }
+  if (!bullets || unpriced) return null;
+  var diff = Math.round(d.cal - sum);
+  if (Math.abs(diff) <= 5) return null;      // rounding, not a real gap
+  return { diff: diff, sum: Math.round(sum), total: Math.round(d.cal), meals: bullets };
+}
+
+/** Said plainly, with what to do about it. */
+function diaryCheckLine(d) {
+  var c = diaryCheck(d);
+  if (!c) return '';
+  return '<div class="note-warn">These ' + c.meals + ' meals add up to ' + nf(c.sum) +
+    ' kcal, but the day\'s total says ' + nf(c.total) + ' \u2014 ' + nf(Math.abs(c.diff)) +
+    ' kcal ' + (c.diff > 0 ? 'more than the diary' : 'less than the diary') +
+    '. One of them is wrong.</div>';
+}
+
 function noteHtml(t) {
   var lines = String(t == null ? '' : t).split(/\r?\n/).filter(function (x) { return x.trim(); });
   if (lines.length < 2 && !/^\s*[-•*]\s/.test(lines[0] || '')) return esc(t);
@@ -1873,7 +1910,8 @@ function openDay(date) {
       h += '<div class="note"><span class="lbl">Protein so far</span>' +
         nf(M.targets.protein_floor_g - d.protein) + ' g to go to the ' + nf(M.targets.protein_floor_g) + ' g target.</div>';
     }
-    if (d.notes) h += '<div class="note"><span class="lbl">Note</span>' + noteHtml(d.notes) + '</div>';
+    if (d.notes) h += '<div class="note"><span class="lbl">Note</span>' + noteHtml(d.notes) +
+      diaryCheckLine(d) + '</div>';
   }
   s.innerHTML = h;
   s.hidden = false;

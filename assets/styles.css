@@ -438,6 +438,9 @@ td b{font-weight:500}
 .note .lbl{display:block;margin-bottom:6px}
 /* the food diary: one bullet per meal, its own calories in brackets */
 .note .meals{margin:0;padding-left:17px}
+/* the diary and the total disagreeing: quiet, but not hidden */
+.note-warn{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);
+  font-size:11.5px;line-height:1.5;color:var(--amber)}
 .note .meals li{margin:2px 0}
 .note .note-line{display:block;margin-top:8px}
 
