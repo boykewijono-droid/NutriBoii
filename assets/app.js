@@ -1096,120 +1096,167 @@ function lastDayStrip(t) {
  *  eaten against today's calorie target, an estimate of what has been burned
  *  up to now, and protein and fat with their balance. The day's deficit is
  *  held back until it is closed. */
-/** Today in one sentence, for someone who has read nothing else on the page:
- *  where the day stands and what would change it. No jargon, no percentages,
- *  and never "you failed" - what is still true, and what the next meal would
- *  have to be. */
-function dayStory(d, t) {
-  var burn = expectedBurn(d), target = calorieTarget(d, t);
-  if (burn == null || target == null) return '';
-  var eaten = d.cal == null ? 0 : d.cal;
-  var gap = Math.round(burn - eaten), over = Math.round(eaten - target);
-  var open = !!d.inProgress;
-  if (d.cal == null) {
-    return 'Nothing logged yet. Eat up to ' + nf(target) + ' kcal today and you hit the plan.';
-  }
-  if (over <= 0) {
-    return 'You have ' + nf(-over) + ' kcal left before ' + nf(target) + ', the day\'s plan. ' +
-      (open ? 'Stay under it and today is a full day of progress.'
-            : 'You finished under it: a full day of progress.');
-  }
-  if (gap > 0) {
-    return 'You are ' + nf(over) + ' kcal past the ' + nf(target) + ' you planned to eat, but still under ' +
-      (open ? '~' : '') + nf(burn) + ', what today burns. Fat still comes off today, just slower than planned.';
-  }
-  return 'You have eaten ' + nf(-gap) + ' kcal more than today burns. Today puts a little fat on rather than taking it off' +
-    (open ? ', unless the rest of the day is spent moving.' : '.');
+/** Remembered across the 10-minute auto-refresh, so an open panel does not
+ *  snap shut while it is being read. */
+var heroOpen = false;
+
+/** The clock on the card: he checks this after eating, and "22:05" tells him
+ *  which numbers are nearly final and which have hours left to move. */
+function heroClock() {
+  var c = sgtClock();
+  return (c.h < 10 ? '0' : '') + c.h + ':' + (c.m < 10 ? '0' : '') + c.m;
 }
 
-/** The hero: one picture of the day, one sentence, and nothing to work out.
+/** The headline: always how much ROOM IS LEFT, never a sum to work out. What
+ *  it counts down to changes as the day crosses each line, and the caption is
+ *  how you know which line you are near.
  *
- *  Two numbers used to compete here - the deficit against the burn, and the
- *  gap against the plan - and both were true, which is exactly why the card
- *  could not be read. They are one fact from two ends: 80 kcal of deficit IS
- *  232 kcal past the plan. So there is one bar with everything on it (what
- *  was eaten, where the plan sits, where the burn ends), one headline number,
- *  and one sentence saying what it means.
+ *      before eating      the whole plan        "planned today"
+ *      under the plan     plan - eaten          "left in plan"       green
+ *      past the plan      burn - eaten          "left before even"   amber
+ *      past the burn      eaten - burn          "over burn"          red
  *
- *  The bar fills with food eaten, never with "progress": a bar that showed
- *  the deficit would sit at 100% before breakfast, since eating nothing is
- *  the largest deficit there is. */
-function heroProgress(d, t) {
-  var burned = burnedSoFar(d);
-  var synced = d.active != null || d.exercise != null;
-  var target = calorieTarget(d, t), burn = expectedBurn(d);
+ *  Past the plan it also says how far past, because "45 left before even" on
+ *  its own reads like permission to eat 45 more, when the plan said stop at
+ *  1,672 — and how far past the plan is the number he asks for.
+ */
+function heroHead(d, t) {
+  var plan = calorieTarget(d, t), burn = expectedBurn(d);
   var eaten = d.cal == null ? 0 : d.cal;
-  var open = !!d.inProgress, tilde = open ? '~' : '';
-  // Today's deficit, against the whole day's forecast burn - not the burn so
-  // far, which arrives by the minute and made every breakfast a "surplus".
-  // It is also how the sheet's own Deficit column is worked out.
-  var gap = burn == null ? null : Math.round(burn - eaten);
-  // Green once the day is inside the plan, amber while it is still a deficit
-  // but past the plan, red once more was eaten than burned. The bar, the
-  // number and the sentence all take this one class, so colour never has to
-  // be interpreted twice.
-  var cls = energyClass(eaten, target, burn);
+  if (burn == null || plan == null) {
+    return { value: eaten, caption: 'eaten so far', cls: '', past: null };
+  }
+  if (eaten === 0) return { value: plan, caption: 'planned today', cls: '', past: null };
+  if (eaten <= plan) return { value: plan - eaten, caption: 'left in plan', cls: 'good', past: null };
+  var past = Math.round(eaten - plan);
+  if (eaten <= burn) return { value: burn - eaten, caption: 'left before even', cls: 'caution', past: past };
+  return { value: eaten - burn, caption: 'over burn', cls: 'bad', past: past };
+}
 
-  var h = '<div class="slab">' +
-    '<div class="slab-top"><span class="lbl">Today · so far</span>' + chip(d) + '</div>';
+/** The arithmetic, for the panel behind the "?". Everything the headline and
+ *  the bar are made of, in the order it is worked out. */
+function heroDetails(d, t) {
+  var plan = calorieTarget(d, t), burn = expectedBurn(d), burned = burnedSoFar(d);
+  var eaten = d.cal == null ? 0 : d.cal, pct = 100 - deficitPct(t);
+  var rows = [];
+  if (burn == null || plan == null) {
+    rows.push(['eaten', nf(eaten)]);
+    if (burned != null) rows.push(['burned so far', nf(burned)]);
+    if (d.bmr != null) rows.push(['BMR floor', nf(Math.round(d.bmr))]);
+    rows.push(['forecast burn', 'needs 3 days']);
+    rows.push(['plan', '\u2014']);
+    return rows;
+  }
+  var share = Math.round(burn * (1 - deficitPct(t) / 100));
+  rows.push(['forecast burn', (d.inProgress ? '~' : '') + nf(burn)]);
+  rows.push([pct + '% of burn', nf(share)]);
+  if (d.bmr != null) rows.push(['BMR floor', nf(Math.round(d.bmr))]);
+  rows.push(['plan', nf(plan) + (share < plan ? ' \u00b7 floored' : '')]);
+  rows.push(['eaten', nf(eaten)]);
+  if (burned != null) rows.push(['burned so far', nf(burned)]);
+  if (eaten > plan) rows.push(['past plan', '+' + nf(Math.round(eaten - plan))]);
+  var def = Math.round(burn - eaten);
+  rows.push(['deficit \u00b7 burn less eaten', (def >= 0 ? '+' : '\u2212') + nf(Math.abs(def))]);
+  rows.push(['goal \u00b7 burn less plan', '+' + nf(Math.round(burn - plan))]);
+  return rows;
+}
 
-  if (burn == null || target == null) {
-    // No forecast yet (too little history): show what is known, claim nothing.
-    h += '<div class="figs"><div class="fig lead"><b>' +
-      (d.cal == null ? '<span class="words">No food yet</span>' : nf(d.cal) + '<span class="u">kcal</span>') +
-      '</b><small>eaten so far</small></div></div>';
+/** One macro bar: eaten against the number that matters for it. */
+function heroMacro(name, have, limit, over) {
+  if (have == null || limit == null) return '';
+  var w = clamp(have / limit * 100, 0, 100).toFixed(1);
+  var cls = over ? (have > limit ? 'bad' : '') : (have >= limit ? 'good' : '');
+  return '<div class="hm"><div class="hm-top"><span>' + esc(name) + '</span>' +
+    '<b class="' + cls + '">' + nf(Math.round(have)) + '/' + nf(limit) + ' g</b></div>' +
+    '<div class="hm-track"><i class="' + cls + '" style="width:0%" data-w="' + w + '"></i></div></div>';
+}
+
+function heroProgress(d, t) {
+  var plan = calorieTarget(d, t), burn = expectedBurn(d), burned = burnedSoFar(d);
+  var eaten = d.cal == null ? 0 : d.cal;
+  var head = heroHead(d, t);
+  var noForecast = (burn == null || plan == null);
+
+  // The bar carries the whole day at one scale: how much has been eaten, and
+  // where the plan and the burn fall. It fills with FOOD, never with
+  // progress — a bar that filled with deficit would sit full before
+  // breakfast, eating nothing being the largest deficit there is.
+  var bmr = d.bmr == null ? 0 : Math.round(d.bmr);
+  var top = noForecast ? Math.max(bmr, eaten) * 1.18 : Math.max(burn, eaten) * 1.06;
+  if (!top) top = 1;
+  var pc = function (v) { return clamp(v / top * 100, 0, 100); };
+  var planAt = noForecast ? bmr : plan;
+  var s1 = Math.min(eaten, planAt);
+  var s2 = noForecast ? 0 : Math.min(Math.max(eaten - plan, 0), Math.max(burn - plan, 0));
+  var s3 = noForecast ? 0 : Math.max(eaten - burn, 0);
+
+  // Two marks would collide on a quiet day, where the plan sits on the BMR
+  // and the burn is barely above it, so the second one drops to its own line.
+  var ticks = [];
+  var anchor = function (x) { return x < 14 ? 'translateX(0)' : x > 86 ? 'translateX(-100%)' : 'translateX(-50%)'; };
+  if (noForecast) {
+    if (bmr) ticks.push({ at: pc(bmr), top: 0, name: 'BMR', value: nf(bmr) });
   } else {
-    var over = Math.round(eaten - target);
-    // An empty day earns no colour: green before the first meal would be
-    // congratulating him for not having eaten breakfast yet.
-    var headCls = d.cal == null ? '' : cls;
-    h += '<div class="goal"><div class="goal-top">' +
-      '<div class="fig headline ' + headCls + '">' +
-        (d.cal == null
-          ? '<b class="words">No food yet</b><small>nothing logged today</small>'
-          : '<b><span data-count="' + Math.abs(gap) + '">' + nf(Math.abs(gap)) + '</span>' +
-            '<span class="u">kcal</span></b><small>' +
-            (gap >= 0 ? 'deficit today' : 'surplus today') + '</small>') +
-      '</div>' +
-      '<div class="goal-of ' + headCls + '"><b>' +
-        (d.cal == null ? nf(target) : nf(Math.abs(over))) + '</b><small>' +
-        (d.cal == null ? 'kcal to eat today'
-          : over <= 0 ? 'kcal left of the plan' : 'kcal past the plan') + '</small></div>' +
-    '</div>';
-
-    // One bar carrying the whole day: how much has been eaten, where the plan
-    // sits, where the burn ends. The gap between the plan mark and the end of
-    // the track IS the deficit being aimed at, drawn to scale.
-    var top = Math.max(burn, eaten, target);
-    h += '<div class="goal-track">' +
-        '<div class="goal-fill ' + cls + '" style="width:0%" data-w="' + clamp(eaten / top * 100, 0, 100).toFixed(1) + '"></div>' +
-        '<s style="left:' + clamp(target / top * 100, 0, 100).toFixed(1) + '%"></s>' +
-        // the burn only needs its own mark when eating has pushed the track
-        // past it; otherwise the burn IS the end of the track
-        (eaten > burn ? '<s class="s-burn" style="left:' + clamp(burn / top * 100, 0, 100).toFixed(1) + '%"></s>' : '') +
-      '</div>' +
-      '<div class="goal-keys">' +
-        '<span><i>eaten</i>' + nf(eaten) + '</span>' +
-        '<span class="k-plan"><i>plan</i>' + tilde + nf(target) + '</span>' +
-        '<span class="k-burn"><i>burn</i>' + tilde + nf(burn) + '</span>' +
-      '</div>' +
-      '<div class="goal-say ' + cls + '">' + dayStory(d, t) + '</div>' +
-    '</div>';
+    var pp = pc(plan), pb = pc(burn), stacked = (pb - pp) < 26;
+    ticks.push({ at: pp, top: 0, name: 'PLAN', value: nf(plan) });
+    ticks.push({ at: pb, top: stacked ? 16 : 0, name: 'BURN', value: (d.inProgress ? '~' : '') + nf(burn) });
   }
+  var tickH = ticks.length && ticks[ticks.length - 1].top ? 32 : 16;
 
-  if (burned != null) {
-    h += '<div class="burn-line">≈' + nf(burned) + ' kcal burned so far · ' +
-      (synced ? 'resting burn to now + activity' : 'resting burn to now') +
-      (target != null && burn != null && Math.round(burn * (1 - deficitPct(t) / 100)) < target
-        ? ' · the plan is held at your ' + nf(Math.round(d.bmr)) + ' kcal BMR, the floor'
-        : '') + '</div>';
-  }
+  var note = '';
+  // An unstarted day says so first: why the plan is what it is matters
+  // less than the fact that nothing has been eaten yet.
+  if (d.cal == null) note = 'nothing logged yet today';
+  else if (noForecast) note = 'no forecast yet · nothing claimed';
+  else if (Math.round(burn * (1 - deficitPct(t) / 100)) < plan) note = 'plan held at your BMR, the floor';
+  else if (burned != null) note = '≈' + nf(burned) + ' kcal burned so far';
 
-  h += macroStats(d, t) +
-    '<div class="energy-note">Eat less than you burn and fat comes off; the plan is to end each day about ' +
-      deficitPct(t) + '% under what you burned, which is the pace the projection assumes. ' +
-      'Today counts in the 7‑day average from midnight, when the day is done. ' +
-      'Nothing to close by hand.</div>' +
+  var details = heroDetails(d, t);
+
+  var h = '<div class="hero">' +
+    '<div class="hero-top">' + chip(d) +
+      (d.steps == null ? '' : '<span class="ht-k">' + nf(d.steps) + ' steps</span>') +
+      '<span class="ht-sp"></span><span class="ht-k">' + (d.inProgress ? heroClock() : 'done') + '</span>' +
+    '</div>' +
+
+    '<div class="hero-num ' + head.cls + '">' +
+      '<b><span data-count="' + Math.round(head.value) + '">' + nf(Math.round(head.value)) + '</span></b>' +
+      '<span class="u">kcal</span>' +
+    '</div>' +
+    '<div class="hero-cap ' + head.cls + '">' + head.caption +
+      (head.past == null ? '' : '<span class="hero-past">' + nf(head.past) + ' past plan</span>') +
+    '</div>' +
+
+    '<div class="hero-bar">' +
+      '<i class="s1" style="width:0%" data-w="' + pc(s1).toFixed(1) + '"></i>' +
+      '<i class="s2" style="left:' + pc(planAt).toFixed(1) + '%;width:0%" data-w="' + pc(s2).toFixed(1) + '"></i>' +
+      (noForecast ? '' : '<i class="s3" style="left:' + pc(burn).toFixed(1) + '%;width:0%" data-w="' + pc(s3).toFixed(1) + '"></i>') +
+      ticks.map(function (k) { return '<s style="left:' + k.at.toFixed(1) + '%"></s>'; }).join('') +
+    '</div>' +
+    '<div class="hero-ticks" style="height:' + tickH + 'px">' +
+      ticks.map(function (k) {
+        return '<span style="left:' + k.at.toFixed(1) + '%;top:' + k.top + 'px;transform:' + anchor(k.at) + '">' +
+          '<i>' + k.name + '</i>' + esc(k.value) + '</span>';
+      }).join('') +
+    '</div>' +
+
+    (function () {
+      var m = heroMacro('PROTEIN', d.protein, t.protein_floor_g, false) +
+              heroMacro('FAT', d.fat, t.fat_ceiling_g, true);
+      return m ? '<div class="hero-macros">' + m + '</div>' : '';
+    })() +
+
+    '<div class="hero-foot">' +
+      '<span class="ht-k">' + esc(note) + '</span><span class="ht-sp"></span>' +
+      '<button type="button" class="hero-why" data-act="why" aria-expanded="' + (heroOpen ? 'true' : 'false') +
+        '" aria-controls="heroWhy" aria-label="' + (heroOpen ? 'Hide' : 'Show') + ' how these numbers are worked out">' +
+        '<i>' + (heroOpen ? '\u00d7' : '?') + '</i></button>' +
+    '</div>' +
+    '<div class="hero-panel' + (heroOpen ? ' open' : '') + '" id="heroWhy">' +
+      '<div class="hp-in">' + details.map(function (r) {
+        return '<div class="hp-row"><span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b></div>';
+      }).join('') + '</div>' +
+    '</div>' +
   '</div>';
   return h;
 }
@@ -1238,46 +1285,26 @@ function burnedSoFar(d) {
   return Math.round(d.bmr * dayFraction() + (d.activity || 0));
 }
 
-/** Protein and fat at a glance, the balance said in plain words: "57 g short
- *  of your 150 g target" rather than "under floor", which only makes sense if
- *  you already know what the floor is. */
-function macroStats(d, t) {
-  var out = '';
-  var target = t.protein_floor_g, limit = t.fat_ceiling_g;
-  var red = t.fat_red_g == null ? limit : t.fat_red_g;
-  if (d.protein != null && target != null) {
-    var diff = Math.round(d.protein - target);
-    // still to eat is amber, a heads-up; short on a finished day is red
-    var pCls = diff >= 0 ? 'good' : d.inProgress ? 'caution' : 'bad';
-    var pBal = diff >= 0 ? nf(diff) + ' g above your ' + nf(target) + ' g target'
-             : nf(-diff) + ' g ' + (d.inProgress ? 'to go to' : 'short of') + ' your ' + nf(target) + ' g target';
-    var pMax = Math.max(target * 1.25, d.protein);
-    out += stat('Protein', d.protein, pCls, pBal, d.protein / pMax, target / pMax);
-  }
-  if (d.fat != null && limit != null) {
-    var left = Math.round(limit - d.fat);
-    var fCls = d.fatState === 'over' ? 'bad' : d.fatState === 'caution' ? 'caution' : 'good';
-    var fBal = left >= 0 ? nf(left) + ' g left before your ' + nf(limit) + ' g limit'
-             : nf(-left) + ' g over your ' + nf(limit) + ' g limit';
-    var fMax = Math.max(red * 1.3, d.fat);
-    out += stat('Fat', d.fat, fCls, fBal, d.fat / fMax, limit / fMax);
-  }
-  return out ? '<div class="stats">' + out + '</div>' : '';
-}
-function stat(name, value, cls, balance, frac, mark) {
-  return '<div class="stat ' + (cls || '') + '"><span class="k">' + name + '</span>' +
-    '<b class="v">' + nf(value) + '<span class="u">g</span></b>' +
-    '<div class="mini"><i style="width:' + clamp(frac * 100, 0, 100).toFixed(1) + '%"></i>' +
-      '<s style="left:' + clamp(mark * 100, 0, 100).toFixed(1) + '%"></s></div>' +
-    '<span class="bal">' + esc(balance) + '</span></div>';
-}
-
 /* --- the one bit of motion in the whole page ---------------------------
    The deficit is the number this exists to move, so on paint it counts up
    and the energy bar fills. Only when the value has actually changed, so a
    background refresh every ten minutes does not keep replaying it, and never
    when the reader has asked for reduced motion. */
 var lastCounted = null;
+/** Open or close the arithmetic, in place. Measured rather than guessed at a
+ *  fixed height: eight rows wrap differently on a phone than on a desktop. */
+function toggleHeroWhy(btn) {
+  var panel = document.getElementById('heroWhy');
+  if (!panel) return;
+  heroOpen = !heroOpen;
+  panel.classList.toggle('open', heroOpen);
+  panel.style.maxHeight = heroOpen ? (panel.firstChild.offsetHeight + 4) + 'px' : '0px';
+  btn.setAttribute('aria-expanded', heroOpen ? 'true' : 'false');
+  btn.setAttribute('aria-label', (heroOpen ? 'Hide' : 'Show') + ' how these numbers are worked out');
+  var glyph = btn.querySelector('i');
+  if (glyph) glyph.textContent = heroOpen ? '\u00d7' : '?';
+}
+
 function paintHero(root) {
   if (!root || !root.querySelectorAll) return;
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -1291,6 +1318,9 @@ function paintHero(root) {
       else raf(function () { bar.style.width = w; });
     })(bars[i]);
   }
+
+  var panel = root.querySelector('.hero-panel.open');
+  if (panel && panel.firstChild) panel.style.maxHeight = (panel.firstChild.offsetHeight + 4) + 'px';
 
   var el = root.querySelector('[data-count]');
   if (!el) { lastCounted = null; return; }
@@ -1363,14 +1393,17 @@ function noteHtml(t) {
 }
 
 function heroVoid(d) {
+  // The same card as the hero, with nothing in it yet - not a different one.
   // No "last logged" line here: lastDayStrip() sits directly underneath and
   // says the same thing with more in it.
-  return '<div class="slab void">' +
-    '<div class="slab-top"><span class="lbl">' + esc(fmtDay(M.today)) + ' · SGT</span></div>' +
-    '<div class="figs"><div class="fig lead"><b style="font-size:clamp(30px,5.4vw,46px)">No data logged</b>' +
-      '<small style="margin-top:12px">' + (d.logged
-        ? 'A row exists for today, but no calories yet.'
-        : 'Nothing written for today yet — talk to Claude and the row appears here straight away.') + '</small></div></div>' +
+  return '<div class="hero">' +
+    '<div class="hero-top"><span class="ht-k">' + esc(fmtDay(M.today)) + ' · SGT</span>' +
+      '<span class="ht-sp"></span><span class="ht-k">' + heroClock() + '</span></div>' +
+    '<div class="hero-num"><b class="words">No data logged</b></div>' +
+    '<div class="hero-cap">' + (d.logged ? 'a row exists, no calories yet' : 'nothing written for today yet') + '</div>' +
+    '<div class="hero-foot"><span class="ht-k">' + (d.logged
+      ? 'log a meal and it appears here'
+      : 'talk to Claude and the row appears here straight away') + '</span></div>' +
   '</div>';
 }
 
@@ -2047,6 +2080,7 @@ document.addEventListener('click', function (e) {
   if (t.dataset.flagged) { filter.flagged = !filter.flagged; return renderHistory(); }
   switch (t.dataset.act) {
     case 'refresh': return load();
+    case 'why': return toggleHeroWhy(t);
     case 'closeDay': return closeDay();
     case 'theme': return cycleTheme();
     case 'reconfigure': return showSetup('Currently reading: ' + (sheetId() || 'nothing') + '.');

@@ -167,13 +167,6 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 /* ==========================  the hero slab  ==============================
    The one memorable element. Everything else stays quiet around it.
    ========================================================================= */
-.slab{
-  background:var(--slab-bg);color:var(--slab-fg);
-  padding:clamp(24px,3.4vw,38px);position:relative;overflow:hidden;
-}
-.slab.void{padding-block:clamp(34px,5vw,56px)}
-.slab-top{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap}
-.slab .lbl{color:var(--slab-dim)}
 .chip{
   font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
   border:1px solid rgba(244,241,232,.26);padding:3px 9px;color:var(--slab-fg);
@@ -181,76 +174,100 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .chip.auto{border-style:dashed}        /* worked out, not logged by hand */
 .dt.auto{border-style:dashed}
 .chip.Treat{border-color:var(--accent);color:var(--accent)}
-.chip.Gym{border-color:var(--slab-fg);font-weight:500}
+.chip.Gym{font-weight:600}
 
-.figs{display:flex;align-items:baseline;gap:clamp(22px,4.6vw,56px);flex-wrap:wrap;margin:24px 0 6px}
-.fig{display:flex;flex-direction:column;gap:5px;min-width:0}
-.fig b{
-  font-family:var(--f-display);font-weight:500;
-  font-size:clamp(52px,10.5vw,92px);line-height:.86;letter-spacing:-.035em;
-  font-variation-settings:"opsz" 144;
+/* ======================================================================
+   The Today hero, from the Claude Design file. It carries its own palette
+   and display face rather than the page's: chosen deliberately, so the rest
+   of the page does not match it yet.
+
+   The bar fills with FOOD, never with "progress" — a bar filled by deficit
+   would sit full before breakfast, eating nothing being the largest deficit
+   there is.
+   ====================================================================== */
+.hero{
+  --h-card:#ffffff; --h-fg:#191b14; --h-dim:#5d6157; --h-line:#e3e4dc; --h-track:#eceee5;
+  --h-good:#4c7300; --h-good-fill:#a8d63c;
+  --h-amber:#845400; --h-amber-fill:#f2b23f;
+  --h-bad:#ae2d19;   --h-bad-fill:#ff7d68;
+  --h-face:"Archivo",Helvetica,Arial,sans-serif;
+  background:var(--h-card);border:1px solid var(--h-line);border-radius:20px;
+  padding:18px 18px 14px;color:var(--h-fg);font-family:var(--h-face);
 }
-.fig .u{font-family:var(--f-mono);font-size:.2em;letter-spacing:.04em;color:var(--slab-dim);
-  margin-left:.62em;display:inline-block}
-.fig small{font-size:11.5px;color:var(--slab-dim)}
-.fig.lead b{color:var(--slab-fg)}
-.fig.good b{color:var(--slab-good)}
-.fig.caution b{color:var(--slab-amber)}
-.fig.bad b{color:var(--slab-bad)}
-.fig b.words{font-size:clamp(34px,6vw,52px);letter-spacing:-.02em}
+:root[data-theme="dark"] .hero{
+  --h-card:#181a16; --h-fg:#f2f3ec; --h-dim:#9ba095; --h-line:#2c2f28; --h-track:#24271f;
+  --h-good:#c6e75c; --h-good-fill:#c6e75c;
+  --h-amber:#f5bb52; --h-amber-fill:#f5bb52;
+  --h-bad:#ff8a75;   --h-bad-fill:#ff8a75;
+}
 
-/* what is left to eat: the one number this card exists to answer */
-.fig.headline b{animation:pop .5s var(--ease) both}
-.fig.headline.good b{text-shadow:0 0 26px rgba(180,211,54,.28)}
-@keyframes pop{from{opacity:0;transform:translateY(7px) scale(.97)}to{opacity:1;transform:none}}
-.burn-line{margin-top:13px;font-size:11.5px;line-height:1.5;color:var(--slab-dim)}
+.hero-top{display:flex;align-items:center;gap:8px}
+.hero-top .chip{font-family:var(--f-mono);font-size:11px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--h-fg);border:1px solid var(--h-line);border-radius:999px;padding:5px 11px}
+.hero-top .chip.auto{border-style:dashed}
+.ht-k{font-family:var(--f-mono);font-size:11px;color:var(--h-dim)}
+.ht-sp{flex:1}
 
-/* ---- the goal: one bar, one sentence -------------------------------- */
-.goal{margin:22px 0 0}
-.goal-top{display:flex;align-items:baseline;justify-content:space-between;gap:18px;flex-wrap:wrap}
-.goal-of{text-align:right;display:flex;flex-direction:column;gap:5px;align-items:flex-end;color:var(--slab-fg)}
-.goal-of.good{color:var(--slab-good)}
-.goal-of.caution{color:var(--slab-amber)}
-.goal-of.bad{color:var(--slab-bad)}
-.goal-of b{font-family:var(--f-display);font-weight:500;font-size:clamp(26px,4.4vw,38px);
-  line-height:.9;letter-spacing:-.02em}
-.goal-of small{font-size:11.5px;color:var(--slab-dim)}
-.goal-track{position:relative;height:9px;background:var(--slab-line);margin-top:18px}
-.goal-fill{position:absolute;inset:0 auto 0 0;background:var(--slab-fg);transition:width .8s var(--ease)}
-.goal-fill.good{background:var(--slab-good)}
-.goal-fill.caution{background:var(--slab-amber)}
-.goal-fill.bad{background:var(--slab-bad)}
-.goal-track s{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;background:var(--slab-fg);
+.hero-num{display:flex;align-items:flex-end;gap:10px;margin:18px 0 2px;color:var(--h-fg)}
+.hero-num b{font-size:clamp(46px,13vw,62px);line-height:.86;font-weight:700;letter-spacing:-.045em;
+  font-variant-numeric:tabular-nums}
+.hero-num .u{font-family:var(--f-mono);font-size:12px;font-weight:600;padding-bottom:6px}
+.hero-num b.words{font-size:clamp(26px,6.4vw,38px);line-height:1.1;letter-spacing:-.02em}
+.hero-num.good{color:var(--h-good)}
+.hero-num.caution{color:var(--h-amber)}
+.hero-num.bad{color:var(--h-bad)}
+
+.hero-cap{font-family:var(--f-mono);font-size:11px;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--h-dim);margin-bottom:20px}
+/* how far past the plan: "45 left before even" alone reads like permission */
+.hero-past{color:var(--h-fg);margin-left:8px;padding-left:8px;border-left:1px solid var(--h-line)}
+
+.hero-bar{position:relative;height:16px;border-radius:5px;background:var(--h-track);overflow:hidden}
+.hero-bar i{position:absolute;top:0;bottom:0;transition:width .85s var(--ease)}
+.hero-bar .s1{left:0;background:var(--h-good-fill)}
+.hero-bar .s2{background:var(--h-amber-fill)}
+.hero-bar .s3{background:var(--h-bad-fill)}
+.hero-bar s{position:absolute;top:0;bottom:0;width:2px;background:var(--h-card);opacity:.95;
   text-decoration:none}
-.goal-track s.s-burn{background:var(--slab-dim)}
-/* the three numbers the bar is made of, in the order the bar draws them */
-.goal-keys{display:flex;justify-content:space-between;gap:12px;margin-top:11px;
-  font-size:11.5px;color:var(--slab-fg)}
-.goal-keys i{font-style:normal;display:block;font-size:10px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--slab-dim);margin-bottom:2px}
-.goal-keys .k-plan{text-align:center}
-.goal-keys .k-burn{text-align:right}
-.goal-say{margin-top:15px;font-size:13px;line-height:1.5;color:var(--slab-fg);max-width:54ch}
-.goal-say.caution{color:var(--slab-amber)}
-.goal-say.bad{color:var(--slab-bad)}
 
-.energy-note{margin-top:14px;font-size:11.5px;line-height:1.55;color:var(--slab-dim);max-width:62ch}
+.hero-ticks{position:relative;margin-top:7px}
+.hero-ticks span{position:absolute;white-space:nowrap;font-family:var(--f-mono);font-size:11px;
+  color:var(--h-fg);font-weight:600}
+.hero-ticks i{font-style:normal;letter-spacing:.1em;color:var(--h-dim);font-weight:400;margin-right:5px}
+
+.hero-macros{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+.hm-top{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;
+  color:var(--h-dim);margin-bottom:5px;letter-spacing:.1em}
+.hm-top b{font-weight:600;letter-spacing:0;color:var(--h-dim)}
+.hm-top b.good{color:var(--h-good)}
+.hm-top b.bad{color:var(--h-bad)}
+.hm-track{height:4px;border-radius:2px;background:var(--h-track);overflow:hidden}
+.hm-track i{display:block;height:100%;background:var(--h-dim);transition:width .85s var(--ease)}
+.hm-track i.good{background:var(--h-good-fill)}
+.hm-track i.bad{background:var(--h-bad-fill)}
+
+.hero-foot{display:flex;align-items:center;gap:10px;margin-top:14px}
+/* 44px touch target, with the ring drawn smaller inside it */
+.hero-why{width:44px;height:44px;margin:-10px -10px -10px 0;display:flex;align-items:center;
+  justify-content:center;background:transparent;border:0;cursor:pointer;color:inherit}
+.hero-why i{width:26px;height:26px;border-radius:999px;border:1px solid var(--h-line);display:flex;
+  align-items:center;justify-content:center;font-family:var(--f-mono);font-size:12px;font-weight:600;
+  font-style:normal;color:var(--h-dim)}
+.hero-why:hover i{color:var(--h-fg);border-color:var(--h-dim)}
+.hero-why:focus-visible i{outline:2px solid var(--h-fg);outline-offset:2px}
+
+.hero-panel{max-height:0;overflow:hidden;transition:max-height .42s var(--ease)}
+.hp-in{border-top:1px solid var(--h-line);margin-top:6px;padding-top:12px;display:grid;gap:7px}
+.hp-row{display:flex;justify-content:space-between;gap:12px;font-family:var(--f-mono);font-size:12px}
+.hp-row span{color:var(--h-dim)}
+.hp-row b{color:var(--h-fg);font-weight:500;font-variant-numeric:tabular-nums}
+
+@media (prefers-reduced-motion: reduce){
+  .hero-bar i,.hm-track i,.hero-panel{transition:none}
+}
+
 
 /* protein and fat at a glance, in plain words: no "floor" or "ceiling" */
-.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(18px,4vw,48px);
-  margin-top:24px;padding-top:20px;border-top:1px solid var(--slab-line)}
-.stat .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--slab-dim);font-weight:500}
-.stat .v{display:block;font-family:var(--f-display);font-weight:500;letter-spacing:-.02em;line-height:1;
-  font-size:clamp(30px,4.6vw,42px);margin-top:8px;color:var(--slab-fg)}
-.stat .v .u{font-family:var(--f-mono);font-size:.32em;letter-spacing:.04em;color:var(--slab-dim);margin-left:.5em}
-.stat .mini{height:4px;background:var(--slab-line);margin-top:12px;position:relative;overflow:hidden}
-.stat .mini i{position:absolute;inset:0 auto 0 0;background:var(--slab-fg)}
-.stat .mini s{position:absolute;top:0;bottom:0;width:2px;background:var(--slab-dim);text-decoration:none}
-.stat .bal{display:block;font-size:12px;line-height:1.45;margin-top:9px;color:var(--slab-fg)}
-.stat.good .v,.stat.good .bal{color:var(--slab-good)}  .stat.good .mini i{background:var(--slab-good)}
-.stat.bad .v,.stat.bad .bal{color:var(--slab-bad)}  .stat.bad .mini i{background:var(--slab-bad)}
-.stat.caution .v,.stat.caution .bal{color:var(--slab-amber)}  .stat.caution .mini i{background:var(--slab-amber)}
-
 /* the finished day, in one tappable line under the hero */
 .lastday{
   display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
@@ -481,7 +498,6 @@ td b{font-weight:500}
   main{padding-bottom:82px}
   .topbar{padding-top:22px;margin-bottom:24px}
   .g3,.g4{grid-template-columns:repeat(2,1fr)}
-  .figs{gap:26px}
   .sheet{top:auto;width:100%;border-top:1px solid var(--line);max-height:88vh;transform:translateY(100%)}
   .sheet.on{transform:none}
   .tabbar{

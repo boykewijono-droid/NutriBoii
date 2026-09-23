@@ -169,24 +169,32 @@ than what today has already burned, and shown with a "~".
 
 **Today closes itself at midnight.** Nothing to close by hand. Food arrives
 meal by meal and activity every hour, so while the date is today both halves
-of the deficit are partial. The Today view is **one picture of the day**: a
-bar carrying everything at once -- how much has been eaten, a mark where the
-plan sits, and the burn at the end, so the gap between the mark and the end
-*is* the deficit being aimed at, drawn to scale. Above it, the deficit in
-words ("deficit today" green, "surplus today" red, amber for a deficit that
-falls short of the plan) and how far the day is from the plan. Below it, one
-plain sentence -- "You are 232 kcal past the 1,768 you planned to eat, but
-still under ~2,080, what today burns" -- so nothing has to be worked out.
+of the deficit are partial. The Today card answers one question: **how much
+room is left**. The big number is always room, and what it counts down to
+changes as the day crosses each line -- the plan first, then break-even:
 
-The deficit is measured against the forecast for the *whole* day, not the burn
-so far, which is the sum the sheet's `Deficit` column uses too; a bar that
-filled with deficit instead of food would sit at 100% before breakfast, since
-eating nothing is the largest deficit there is. What you've burned so far
-drops to small print. Then protein and fat with their balance — but today stays out of the 7-day and Week
-averages, and low protein reads "g to go" rather than a warning. Fat is live
-all day, because it only ever goes up. At midnight the day is done and counts
-with whatever was logged; a late meal logged after midnight still lands on its
-own date and corrects it.
+| Where the day is | What the card says |
+|---|---|
+| nothing eaten yet | the whole plan, "planned today" |
+| under the plan | plan less eaten, "left in plan", green |
+| past the plan | burn less eaten, "left before even", amber, and how far past the plan |
+| past the burn | eaten less burn, "over burn", red |
+| no forecast yet | eaten so far, claiming nothing |
+
+Under it one bar carries the whole day at one scale: filled with **food**,
+with the plan and the burn marked on it, so the gap between the plan mark and
+the end is the deficit being aimed at, drawn to scale. The bar fills with food
+and never with "progress" -- a bar filled by deficit would sit full before
+breakfast, eating nothing being the largest deficit there is. On quiet days,
+where the plan sits on the BMR floor and the burn is barely above it, the two
+marks stack instead of colliding.
+
+Everything behind those numbers -- forecast burn, 85% of it, the BMR floor,
+eaten, burned so far, how far past the plan, the deficit and the goal -- is
+one tap away behind the **?**, in the card, without leaving the screen.
+
+The card carries its own palette and display face, from a design done
+separately; the rest of the page has not been brought across to match it.
 
 It used to close when the day type was logged, which turned a label into a
 chore and left an unlabelled day open for ever. So the **day type is worked out
