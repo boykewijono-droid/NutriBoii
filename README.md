@@ -182,8 +182,10 @@ changes as the day crosses each line -- the plan first, then break-even:
 | no forecast yet | eaten so far, claiming nothing |
 
 Under it one bar carries the whole day at one scale: filled with **food**,
-with the plan and the burn marked on it, so the gap between the plan mark and
-the end is the deficit being aimed at, drawn to scale. The bar fills with food
+with **eaten**, the **plan** and the **burn** all marked on it, so the gap
+between the plan mark and the end is the deficit being aimed at, drawn to
+scale. Labels that would sit closer than a quarter of the width drop to the
+next line instead of overlapping. The bar fills with food
 and never with "progress" -- a bar filled by deficit would sit full before
 breakfast, eating nothing being the largest deficit there is. On quiet days,
 where the plan sits on the BMR floor and the burn is barely above it, the two

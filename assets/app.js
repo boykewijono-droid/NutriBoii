@@ -1190,18 +1190,33 @@ function heroProgress(d, t) {
   var s2 = noForecast ? 0 : Math.min(Math.max(eaten - plan, 0), Math.max(burn - plan, 0));
   var s3 = noForecast ? 0 : Math.max(eaten - burn, 0);
 
-  // Two marks would collide on a quiet day, where the plan sits on the BMR
-  // and the burn is barely above it, so the second one drops to its own line.
+  // The marks under the bar: where the food reached, where the plan is, and
+  // where the day's burn ends. EATEN belongs here rather than behind the "?"
+  // — it is the number checked most often, and the bar was drawing it as a
+  // length with nothing to read.
+  //
+  // Any two labels closer than 26% of the width would overlap, so they drop
+  // to the next line instead. On his data that happens most days: the plan
+  // sits on the BMR floor with the burn barely above it.
   var ticks = [];
   var anchor = function (x) { return x < 14 ? 'translateX(0)' : x > 86 ? 'translateX(-100%)' : 'translateX(-50%)'; };
+  if (d.cal != null) ticks.push({ at: pc(eaten), name: 'EATEN', value: nf(eaten) });
   if (noForecast) {
-    if (bmr) ticks.push({ at: pc(bmr), top: 0, name: 'BMR', value: nf(bmr) });
+    if (bmr) ticks.push({ at: pc(bmr), name: 'BMR', value: nf(bmr) });
   } else {
-    var pp = pc(plan), pb = pc(burn), stacked = (pb - pp) < 26;
-    ticks.push({ at: pp, top: 0, name: 'PLAN', value: nf(plan) });
-    ticks.push({ at: pb, top: stacked ? 16 : 0, name: 'BURN', value: (d.inProgress ? '~' : '') + nf(burn) });
+    ticks.push({ at: pc(plan), name: 'PLAN', value: nf(plan) });
+    ticks.push({ at: pc(burn), name: 'BURN', value: (d.inProgress ? '~' : '') + nf(burn) });
   }
-  var tickH = ticks.length && ticks[ticks.length - 1].top ? 32 : 16;
+  ticks.sort(function (a, b) { return a.at - b.at; });
+  // greedy: first line that still has room, otherwise start another
+  var lastAt = [];
+  ticks.forEach(function (k) {
+    var row = 0;
+    while (lastAt[row] != null && k.at - lastAt[row] < 26) row++;
+    lastAt[row] = k.at;
+    k.top = row * 16;
+  });
+  var tickH = lastAt.length * 16;
 
   var note = '';
   // An unstarted day says so first: why the plan is what it is matters
