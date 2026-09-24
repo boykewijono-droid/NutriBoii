@@ -1208,15 +1208,33 @@ function heroProgress(d, t) {
     ticks.push({ at: pc(burn), name: 'BURN', value: (d.inProgress ? '~' : '') + nf(burn) });
   }
   ticks.sort(function (a, b) { return a.at - b.at; });
-  // greedy: first line that still has room, otherwise start another
-  var lastAt = [];
+
+  // Pack them onto lines by where each label actually STARTS and ENDS.
+  //
+  // The first version compared centres and allowed anything 26% apart to
+  // share a line. That is wrong for the labels at the ends: one anchored to
+  // the right extends a whole label-width to its LEFT, so "EATEN 1,300" at
+  // 67% and "BURN ~1,760" at 94% are 27 points apart and still overlap.
+  //
+  // Widths are estimated rather than measured, because the markup is built
+  // as a string before it is in the document: 11px IBM Plex Mono advances
+  // about 6.6px per character, and the narrowest card this runs on is a
+  // 390px phone with roughly 322px of usable width. A wider screen only
+  // makes the labels relatively narrower, so the phone is the worst case.
+  var PC = 100 / 322, CHAR = 6.6 * PC, GAP = 5 * PC;   // gap: the label's own margin
+  ticks.forEach(function (k) {
+    var w = (String(k.name).length + String(k.value).length) * CHAR + GAP;
+    k.l = k.at < 14 ? k.at : k.at > 86 ? k.at - w : k.at - w / 2;
+    k.r = k.l + w;
+  });
+  var rowEnd = [];
   ticks.forEach(function (k) {
     var row = 0;
-    while (lastAt[row] != null && k.at - lastAt[row] < 26) row++;
-    lastAt[row] = k.at;
+    while (rowEnd[row] != null && k.l < rowEnd[row] + GAP) row++;
+    rowEnd[row] = k.r;
     k.top = row * 16;
   });
-  var tickH = lastAt.length * 16;
+  var tickH = rowEnd.length * 16;
 
   var note = '';
   // An unstarted day says so first: why the plan is what it is matters
