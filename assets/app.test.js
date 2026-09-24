@@ -69,6 +69,30 @@ eq('label: No',                    gym.gymLabel(day('No')), 'No');
 eq('label: split name kept',       gym.gymLabel(day('Day 2')), 'Day 2');
 eq('label: unknown is null',       gym.gymLabel(day(null)), null);
 
+
+/* ---- the cache stamp ------------------------------------------------
+ * GitHub Pages serves assets with Cache-Control: max-age=600, so a phone
+ * can keep running yesterday's app.js long after a deploy — which is
+ * exactly what happened the day EATEN was added to the hero. The fix is a
+ * content hash in the URL, and this test is what stops anyone forgetting
+ * to update it: change app.js, styles.css or config.js and it fails,
+ * printing the stamp to use.
+ */
+console.log('\n=== the cache stamp matches the assets it names ===');
+{
+  const crypto = require('crypto');
+  const root = path.join(__dirname, '..');
+  const files = ['assets/styles.css', 'assets/config.js', 'assets/app.js'];
+  const h = crypto.createHash('sha256');
+  files.forEach(f => h.update(fs.readFileSync(path.join(root, f))));
+  const want = h.digest('hex').slice(0, 8);
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  files.forEach(f => {
+    const m = html.match(new RegExp(f.replace('.', '\\.').replace('/', '\\/') + '\\?v=([0-9a-f]+)'));
+    eq(f + ' is stamped with the current contents', m && m[1], want);
+  });
+}
+
 console.log('\n' + '='.repeat(46));
 console.log('  ' + pass + ' passed, ' + fail + ' failed');
 console.log('='.repeat(46));

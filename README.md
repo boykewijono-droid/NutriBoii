@@ -287,6 +287,19 @@ calories behind in `Calories`, and the diary and the total then disagree with
 nothing on screen to say which is right. It refuses rather than guesses: two
 matches remove nothing and the error lists both.
 
+## Why the asset URLs carry a `?v=`
+
+GitHub Pages serves everything with `Cache-Control: max-age=600`, so a phone
+can keep running the previous `app.js` for some time after a deploy -- long
+enough to look like a change never shipped, which is what happened the day
+`EATEN` was added to the hero. `index.html` therefore points at
+`assets/app.js?v=<hash>`, the hash being of the three asset files' contents,
+so a deploy is always a new URL and no browser can serve the old one.
+
+Forgetting to restamp would put the bug straight back, so `app.test.js`
+recomputes the hash and fails if `index.html` disagrees, printing the value
+to use. `scratchpad/patch_cachebust.py` restamps.
+
 ## Keeping it private
 
 The Sheet must be link-readable for a static page to read it. If that is not
