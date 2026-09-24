@@ -325,6 +325,33 @@ console.log('\n=== workout-only active calories are not passed off as all-day ==
   eq('ActiveCal 300 is below the workout, so left blank for Claude to ask', d.ActiveCal, '');
 }
 
+console.log('\n=== a morning value is cleared, not frozen, when the workout arrives ===');
+{
+  // 24 Sept: an early sync wrote 13 before the workout synced. The workout
+  // then arrived and the rule decided the active total was workout-only -
+  // and "leave the cell alone" kept 13 there all day, while 88 kcal of records
+  // sat in the store. 6 of 8 recent days were frozen this way.
+  const w = world();
+  call(w, payload({ active_calories: [activeDay(TODAY, 9, 13)] }));
+  eq('before the workout, the partial total is written', row(w, TODAY).ActiveCal, 13);
+  call(w, payload({ exercise: [session(TODAY, 18, 19)],
+                    total_calories: [rawCal(TODAY, 18, 19, 535)],
+                    active_calories: [activeDay(TODAY, 20, 88)] }));
+  const d = row(w, TODAY);
+  eq('the workout arrives', d.ExerciseCal, 535);
+  eq('and the stale 13 is CLEARED, not left standing', d.ActiveCal, '');
+}
+
+console.log('\n=== an all-day total bigger than the workout still replaces the old one ===');
+{
+  const w = world();
+  call(w, payload({ active_calories: [activeDay(TODAY, 9, 13)] }));
+  call(w, payload({ exercise: [session(TODAY, 18, 19)],
+                    total_calories: [rawCal(TODAY, 18, 19, 300)],
+                    active_calories: [activeDay(TODAY, 20, 610)] }));
+  eq('the real all-day figure is written over the morning one', row(w, TODAY).ActiveCal, 610);
+}
+
 console.log('\n=== calorie records partly inside a session ===');
 {
   const w = world();

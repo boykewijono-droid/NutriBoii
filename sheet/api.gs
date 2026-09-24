@@ -502,10 +502,12 @@ function deleteDay(p) {
  * ExerciseCal is calories from records that sit mostly inside an exercise
  * session, pro rata by overlap, so an all-day calorie record is never counted
  * as exercise. ActiveCal is written only when active-calorie records arrive
- * AND add up to more than the exercise calories: Samsung Health does not share
- * its all-day activity calories with Health Connect, and workout-only active
- * calories written as ActiveCal would stop Claude asking for the real number.
- * A value that never arrived stays blank, not 0.
+ * AND add up to more than the exercise calories. Samsung Health does not
+ * share its all-day activity calories with Health Connect at all; the
+ * records that do arrive are Health Sync's, and a total no bigger than the
+ * workout is not an all-day figure. When that happens the cell is CLEARED,
+ * not left alone: leaving it alone froze a partial morning value in place
+ * all day. A value that never arrived stays blank, not 0.
  *
  * Names are hs-prefixed: every .gs file in the project shares one scope.
  */
@@ -573,6 +575,7 @@ function hsSync(e) {
       var p = {};
       if (t.steps != null) p.steps = t.steps;
       if (t.activeCal != null) p.activecal = t.activeCal;
+      else if (t.activeDiscarded) p.activecal = '';     // blank, never a stale morning value
       if (t.exerciseCal != null) p.exercisecal = t.exerciseCal;
       // A strength session fills GymDay, but only when nobody has said
       // otherwise: a "No" he or Claude wrote is an answer, not an empty cell.
@@ -836,13 +839,18 @@ function hsRollup(store, date) {
   var exercise = sessions.length
     ? (best('total', sessionShare) || best('active', sessionShare))
     : hsWorkoutFallback(recs);
-  var active = best('active');
-  if (active && exercise && active.value <= exercise.value) active = null;   // workout-only, not all-day
+  var active = best('active'), activeDiscarded = false;
+  // An active total no bigger than the workout is taken to be workout-only,
+  // not the day's. Say so, rather than returning null as if nothing had come:
+  // null means "leave the cell alone", which froze a partial figure written
+  // by an earlier sync that morning in place for the rest of the day.
+  if (active && exercise && active.value <= exercise.value) { active = null; activeDiscarded = true; }
   return {
     superseded: superseded,
     gym: gym,
     steps: steps ? steps.value : null,
     activeCal: active ? active.value : null,
+    activeDiscarded: activeDiscarded,
     exerciseCal: exercise ? exercise.value : null,
     sessions: sessions.length,
     exerciseInferred: !!(exercise && exercise.inferred),
