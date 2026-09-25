@@ -1,1 +1,1 @@
-Date,DayType,Calories,Protein_g,Fat_g,Carbs_g,Steps,ActiveCal,ExerciseCal,BMR,TDEE_Target,Deficit,GymDay,Notes
+Date,DayType,Cal_Eaten,Protein_g,Fat_g,Carbs_g,Steps,ActiveCal,ExerciseCal,BMR,TDEE,Deficit,GymDay,Notes,ExerciseMin,WorkoutSteps

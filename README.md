@@ -44,39 +44,56 @@ One row in `Daily Log`, columns in this order:
 |---|---|---|
 | `Date` | `2026-09-12` | ISO, Singapore local date |
 | `DayType` | `Gym` | exactly one of **Rest / Busy / Gym / Treat** |
-| `Calories` | `1910` | kcal eaten |
+| `Cal_Eaten` | `1910` | kcal eaten (was `Calories`) |
 | `Protein_g` | `160` | grams |
 | `Fat_g` | `85` | grams |
 | `Carbs_g` | `134` | grams |
 | `Steps` | `8872` | Samsung Health, synced hourly ([SYNC.md](SYNC.md)) |
-| `ActiveCal` | `642` | Samsung Health activity calories |
-| `ExerciseCal` | `547` | Samsung Health exercise calories |
+| `ActiveCal` | | no longer written or used — Samsung never shares it |
+| `ExerciseCal` | `547` | Samsung Health workout calories, as it reports them |
 | `BMR` | `1672` | optional — blank uses the newest `Baselines` row |
-| `TDEE_Target` | | optional — blank and the dashboard computes it |
+| `TDEE` | | burned; written by the API, recomputed by the dashboard (was `TDEE_Target`) |
 | `Deficit` | | optional — blank and the dashboard computes it |
 | `GymDay` | `Yes` | `Yes` or `No` (or a split like `Day 3`) |
 | `Notes` | `fat over from cashews + oil` | free text, and see below |
+| `ExerciseMin` | `75` | how long the day's workouts ran, synced |
+| `WorkoutSteps` | `975` | steps taken during workouts, synced |
 
 Blank means *not known*. It is rendered as an em dash and left out of every
 average. It is never treated as zero.
 
-`TDEE_Target` and `Deficit` are there so a value can be pinned if you ever want
-to, but leaving them empty is the normal path:
+**How the burn is worked out.** One formula, in two places that must agree to
+the calorie — `dayActivity()` in `sheet/api.gs` writes the sheet's `TDEE`, the
+same function in `assets/app.js` recomputes it for the page — and a check
+feeds both 20,000 random days to prove they do:
 
 ```
-activity    = max( (ExerciseCal × 0.7) + ((ActiveCal − ExerciseCal) × 0.5),
-                   Steps × 0.0004 × your weight )
-TDEE_Target = BMR + activity
-Deficit     = TDEE_Target − Calories
+TDEE    = BMR
+        + workouts:  ExerciseCal − (BMR ÷ 1440 × ExerciseMin)
+        + steps:     (Steps − WorkoutSteps) × 0.0004 × morning weight
+Deficit = TDEE − Cal_Eaten
 ```
 
-**Steps put a floor under the day's activity.** Samsung Health shares its step
-count with Health Connect but not its activity calories, so `ActiveCal` comes
-from whichever app is willing to estimate it — and on a real 13,564-step day
-that arrived 8 kcal above the workout. Whichever is larger, the calorie figures
-or the walking implied by the steps, wins; they are never added together. It
-changes nothing on gym days, where the workout dominates, and rescues the days
-where the calorie stream is junk.
+- **Workouts and walking are added, not compared.** 10,000 steps and a gym
+  session are two activities. The old rule took the larger and threw the other
+  away.
+- **A workout's calories include the resting burn you'd have had anyway**, and
+  the BMR already pays for those minutes, so they come off: 1.16 kcal a minute
+  at a 1,672 BMR. That uses the workout's real length, not a guess.
+- **Steps inside a workout are already in its calories**, so they are not
+  counted again. They are *measured* from Health Sync's minute-by-minute copy
+  of the watch count when it accounts for the day (95–105% of Samsung's
+  total); otherwise estimated from the workout's type — walking 90 a minute,
+  gym 13, running 160, anything else 60 — figures taken from his own watch.
+- **A step is priced at your latest morning weigh-in**, not an old InBody
+  weight. Evening readings, and any more than 1 kg from their neighbouring
+  morning readings, are ignored. No usable weigh-in: the InBody weight.
+- **ActiveCal plays no part.** Samsung never sends Health Connect its activity
+  calories; what arrived in their place came from Health Sync and was never
+  Samsung's number.
+- **A day recorded before workout minutes were** keeps the old rule — the
+  larger of workout × 0.7 and all steps — rather than being rewritten with
+  guesses. A "Past 30 days" resync fills the minutes in for most of history.
 
 ### Notes are parsed, so name the foods
 
@@ -271,7 +288,7 @@ rather than inventing a fifth category.
 ## The diary checks itself
 
 Each meal bullet carries its own calories, so the bullets should add up to
-`Calories`. When every bullet is priced and the two disagree by more than 5
+`Cal_Eaten`. When every bullet is priced and the two disagree by more than 5
 kcal, the note says so — both numbers and the gap — and leaves the judgement
 to you. It exists because 22 Sept sat at 1,915 in the diary and 1,895 in the
 total for a day, with nothing anywhere saying which to believe. A bullet with
@@ -283,7 +300,7 @@ Logging adds; `unlog` takes back. `action=unlog&date=today&match=panuozzo`
 finds that one bullet in the day's diary, reads the calories out of its own
 bracket, subtracts exactly those from the day's total, removes the line and
 recomputes the day. It exists because removing a line by hand leaves its
-calories behind in `Calories`, and the diary and the total then disagree with
+calories behind in `Cal_Eaten`, and the diary and the total then disagree with
 nothing on screen to say which is right. It refuses rather than guesses: two
 matches remove nothing and the error lists both.
 
@@ -309,7 +326,7 @@ data into the page at build time — which costs you the live reads.
 
 ## Activity auto-fill
 
-`Steps` and `ExerciseCal` (and `ActiveCal`, if the phone shares it) arrive
-hourly from Samsung Health through Health Connect and the API's `sync` action.
-The sync writes only those three columns and never touches food. Setup and
-caveats: [SYNC.md](SYNC.md).
+`Steps`, `ExerciseCal`, `ExerciseMin` and `WorkoutSteps` arrive hourly from
+Samsung Health through Health Connect and the API's `sync` action. The sync
+writes only those four columns and never touches food. Setup and caveats:
+[SYNC.md](SYNC.md).

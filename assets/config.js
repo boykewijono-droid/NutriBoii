@@ -44,12 +44,12 @@ window.NUTRIBOII_CONFIG = {
   timezone:  "Asia/Singapore",          // all day boundaries are SGT
   dayTypes:  ["Rest", "Busy", "Gym", "Treat"],
 
-  /* stepKcalPerKg puts a FLOOR under the day's activity: steps x this x your
-     weight, used when it beats the calorie figures. Samsung shares its step
-     count but not its activity calories, so without it a 13,500-step day can
-     be credited with almost nothing. 0.0004 x 76 kg is about 30 kcal per
-     1,000 steps, net of the resting burn those minutes would have cost. */
-  tdee: { exerciseFactor: 0.7, incidentalFactor: 0.5, stepKcalPerKg: 0.0004 },
+  /* The burn is BMR + workouts + steps outside workouts. stepKcalPerKg prices
+     a step at this x your morning weight (0.0004 x 75.6 kg = 0.030 kcal).
+     exerciseFactor is only for days recorded before workout minutes were:
+     then a workout counts at this share of its calories. Keep both in step
+     with the constants in sheet/api.gs. */
+  tdee: { exerciseFactor: 0.7, stepKcalPerKg: 0.0004 },
 
   /* How active a day was, worked out from the day's own numbers so nobody has
      to answer a question about it:
@@ -60,9 +60,7 @@ window.NUTRIBOII_CONFIG = {
      passes, otherwise Low. A day with no activity logged at all stays blank. */
   activityLevels: {
     highExerciseCal: 300,   // a real session, not a walk
-    highActiveCal:   700,
     medExerciseCal:  100,
-    medActiveCal:    400,
     medSteps:       7000
   },
 

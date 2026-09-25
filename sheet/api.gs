@@ -154,7 +154,7 @@ var DAY_TYPES = ['Rest', 'Busy', 'Gym', 'Treat'];
 var DAILY_MAP = {
   date:        [1,  false],
   daytype:     [2,  false], type: [2, false],
-  calories:    [3,  true],  cal: [3, true], kcal: [3, true],
+  calories:    [3,  true],  cal: [3, true], kcal: [3, true], caleaten: [3, true],
   protein:     [4,  true],  proteing: [4, true],
   fat:         [5,  true],  fatg: [5, true],
   carbs:       [6,  true],  carbsg: [6, true], carbohydrates: [6, true],
@@ -162,11 +162,44 @@ var DAILY_MAP = {
   activecal:   [8,  true],  active: [8, true], activecalories: [8, true],
   exercisecal: [9,  true],  exercise: [9, true], exercisecalories: [9, true],
   bmr:         [10, true],
-  /* TDEE_Target and Deficit are derived on every write, so they are
-     deliberately NOT settable through the API. */
+  /* TDEE and Deficit are derived on every write, so they are deliberately
+     NOT settable through the API. ActiveCal (8) is still accepted so an old
+     caller does not error, but nothing reads it any more. */
   gymday:      [13, false], gym: [13, false], split: [13, false],
-  notes:       [14, false], note: [14, false]
+  notes:       [14, false], note: [14, false],
+  exercisemin: [15, true],  exerciseminutes: [15, true], workoutmin: [15, true],
+  workoutsteps: [16, true]
 };
+
+/* The Daily Log is 16 columns: Date ... Notes, then ExerciseMin and
+ * WorkoutSteps, added when the burn stopped guessing at workout length. */
+var DAILY_COLS_N = 16;
+var DAILY_RENAMES = { 3: ['Calories', 'Cal_Eaten'], 11: ['TDEE_Target', 'TDEE'] };
+var DAILY_ADDED   = { 15: 'ExerciseMin', 16: 'WorkoutSteps' };
+
+/** Bring an older Daily Log up to date in place: rename two headers, and add
+ *  the two new columns if the sheet is not wide enough for them (setup trims
+ *  it to exactly the columns it knows about). Data is never moved or touched;
+ *  a sheet already up to date costs one read. */
+function ensureDailyHeaders(sh) {
+  if (typeof sh.getMaxColumns === 'function' && sh.getMaxColumns() < DAILY_COLS_N) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), DAILY_COLS_N - sh.getMaxColumns());
+  }
+  var h = sh.getRange(1, 1, 1, DAILY_COLS_N).getValues()[0];
+  Object.keys(DAILY_RENAMES).forEach(function (c) {
+    if (String(h[c - 1] || '').trim() === DAILY_RENAMES[c][0]) sh.getRange(1, +c).setValue(DAILY_RENAMES[c][1]);
+  });
+  Object.keys(DAILY_ADDED).forEach(function (c) {
+    if (String(h[c - 1] || '').trim() !== '') return;
+    var cell = sh.getRange(1, +c);
+    cell.setValue(DAILY_ADDED[c]);
+    // match the other headers where the real sheet allows it
+    if (typeof cell.setBackground === 'function') {
+      cell.setFontFamily('Roboto Mono').setFontSize(10).setFontWeight('bold')
+          .setBackground('#16150F').setFontColor('#F4F1E8');
+    }
+  });
+}
 
 var BASE_MAP = {
   date:              [1, false],
@@ -183,6 +216,7 @@ function logDay(p) {
   if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
   try {
     var sh = mustGet(DAILY);
+    ensureDailyHeaders(sh);
     var date = resolveDate(p.date);
 
     if (p.daytype != null && String(p.daytype) !== '') {
@@ -192,7 +226,7 @@ function logDay(p) {
       p.daytype = dt;
     }
 
-    var res = upsert(sh, DAILY_MAP, 14, date, p);
+    var res = upsert(sh, DAILY_MAP, DAILY_COLS_N, date, p);
 
     // A brand-new row with no BMR given inherits the newest scan's BMR, so the
     // day's TDEE is frozen against the body composition that was current.
@@ -211,7 +245,7 @@ function logDay(p) {
     writeDerived(sh, findRow(sh, date));
 
     sortByDate(sh);
-    var row = readRow(sh, DAILY_MAP, 14, date);
+    var row = readRow(sh, DAILY_MAP, DAILY_COLS_N, date);
     return {
       ok: true, action: 'log', date: date,
       created: res.created, updated: !res.created,
@@ -314,6 +348,7 @@ function unlogMeal(p) {
   if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
   try {
     var sh = mustGet(DAILY);
+    ensureDailyHeaders(sh);
     var date = resolveDate(p.date);
     var row = findRow(sh, date);
     if (!row) throw new Error('Nothing logged for ' + date + ', so there is nothing to remove.');
@@ -438,7 +473,9 @@ function addScan(p) {
 
 function getDay(p) {
   var date = resolveDate(p.date);
-  var row = readRow(mustGet(DAILY), DAILY_MAP, 14, date);
+  var dsh = mustGet(DAILY);
+  ensureDailyHeaders(dsh);
+  var row = readRow(dsh, DAILY_MAP, DAILY_COLS_N, date);
   if (!row) return { ok: true, action: 'get', date: date, found: false,
                      summary: 'No row logged for ' + date + '.' };
   return { ok: true, action: 'get', date: date, found: true, row: row,
@@ -501,19 +538,34 @@ function deleteDay(p) {
  *
  * ExerciseCal is calories from records that sit mostly inside an exercise
  * session, pro rata by overlap, so an all-day calorie record is never counted
- * as exercise. ActiveCal is written only when active-calorie records arrive
- * AND add up to more than the exercise calories. Samsung Health does not
- * share its all-day activity calories with Health Connect at all; the
- * records that do arrive are Health Sync's, and a total no bigger than the
- * workout is not an all-day figure. When that happens the cell is CLEARED,
- * not left alone: leaving it alone froze a partial morning value in place
- * all day. A value that never arrived stays blank, not 0.
+ * as exercise. ExerciseMin is how long the workouts ran (one app's sessions,
+ * overlaps merged), and WorkoutSteps how many of the day's steps fell inside
+ * them - measured from a minute-by-minute step stream when one accounts for
+ * the day, estimated from workout type and length when not. Together they let
+ * the burn add workouts and walking without counting a walk's steps twice.
+ *
+ * ActiveCal is no longer written. Samsung Health does not share its activity
+ * calories with Health Connect at all; what arrives in their place comes from
+ * Health Sync and was never them. A value that never arrived stays blank.
  *
  * Names are hs-prefixed: every .gs file in the project shares one scope.
  */
 var HS_TAB = 'Activity Sync';
 var HS_HEAD = ['Key', 'Type', 'Origin', 'Start', 'End', 'Value', 'Date', 'Received'];
-var HS_KEEP_DAYS = 7;          // rebuild and keep this many days: covers a "Past 7 days" resend
+var HS_KEEP_DAYS = 7;          // raw records kept this long, to rebuild recent days
+/* A day can be REBUILT from a resend this far back, so a manual "Past 30
+ * days" sync fills ExerciseMin and WorkoutSteps into history. The raw records
+ * are still pruned to HS_KEEP_DAYS afterwards; a normal hourly sync only ever
+ * sends two days, so it never rewrites older ones. */
+var HS_REBUILD_DAYS = 35;
+/* Steps a minute inside a workout, used only when there is no minute-by-minute
+ * step stream to measure them from. Taken from his own watch: long walks ran
+ * 92-98 a minute, short ones 61-70, and 84 minutes of gym held 1,074 steps
+ * (13 a minute). Health Connect exercise types: 79 walk, 56 run, 37 hike,
+ * 0 "other workout" (how Samsung files his gym), 70 strength, 81 weightlifting.
+ * Anything unlisted, tennis included, takes the middle value. */
+var HS_CADENCE = { 79: 90, 56: 160, 37: 90, 0: 13, 70: 13, 81: 13 };
+var HS_CADENCE_DEFAULT = 60;
 /* Apps whose activity counts are authoritative, in order. Samsung Health is
  * the count on the phone, so steps and workout calories come from it whenever
  * it has any for that day, whatever Zepp Life, Health Sync or Android's own
@@ -564,25 +616,35 @@ function hsSync(e) {
       touched[r.date] = 1;
     });
 
-    var cutoff = hsShift(todaySGT(), -HS_KEEP_DAYS);
+    // Weigh-ins first, so a morning weigh-in in this same payload already
+    // prices today's steps.
+    var scale = hsBody(body);
+
+    var rebuildFrom = hsShift(todaySGT(), -HS_REBUILD_DAYS);
+    var keepFrom = hsShift(todaySGT(), -HS_KEEP_DAYS);
     var sh = mustGet(DAILY);
+    ensureDailyHeaders(sh);
     var days = {};
     Object.keys(touched).sort().forEach(function (date) {
-      if (date < cutoff) return;       // older than the window worth rebuilding
+      if (date < rebuildFrom) return;  // older than any resend is meant to reach
       var t = hsRollup(store, date);
       t.superseded.forEach(function (k) { delete store[k]; });
       delete t.superseded;
       var p = {};
       if (t.steps != null) p.steps = t.steps;
-      if (t.activeCal != null) p.activecal = t.activeCal;
-      else if (t.activeDiscarded) p.activecal = '';     // blank, never a stale morning value
-      if (t.exerciseCal != null) p.exercisecal = t.exerciseCal;
+      // ActiveCal is no longer written: Samsung never sends its activity
+      // calories, and what Health Sync sends in their place was never them.
+      if (t.exerciseCal != null) {
+        p.exercisecal = t.exerciseCal;
+        p.exercisemin = t.exerciseMin;
+        p.workoutsteps = t.workoutSteps;
+      }
       // A strength session fills GymDay, but only when nobody has said
       // otherwise: a "No" he or Claude wrote is an answer, not an empty cell.
       var at = findRow(sh, date);
       if (t.gym && (!at || String(sh.getRange(at, 13).getValue() || '').trim() === '')) p.gymday = 'Yes';
       if (!Object.keys(p).length) return;
-      var res = upsert(sh, DAILY_MAP, 14, date, p);
+      var res = upsert(sh, DAILY_MAP, DAILY_COLS_N, date, p);
       if (res.created) {
         var bmr = latestScanBmr();
         if (bmr != null) sh.getRange(res.row, 10).setValue(bmr);
@@ -594,10 +656,8 @@ function hsSync(e) {
 
     // Keep the raw tab small. Anything older than a few days has already been
     // rolled up into the Daily Log.
-    Object.keys(store).forEach(function (k) { if (store[k].date < cutoff) delete store[k]; });
+    Object.keys(store).forEach(function (k) { if (store[k].date < keepFrom) delete store[k]; });
     hsSave(raw, store);
-
-    var scale = hsBody(body);
 
     var updated = Object.keys(days);
     var weighed = scale ? Object.keys(scale) : [];
@@ -616,8 +676,9 @@ function hsSync(e) {
 /* --- body measurements: the daily scale ------------------------------- */
 /* A Mi Body Composition Scale reads through Zepp Life and reaches Health
  * Connect the same way the steps do. These are point measurements, not
- * totals, so the rule is the LAST reading of each day — a second weigh-in
- * replaces the first rather than adding to it.
+ * totals, so the rule is ONE reading per day - the first before noon, or
+ * with none before noon the last. A second weigh-in never adds to the
+ * first, and never displaces a morning one.
  *
  * They are kept in their own tab, well away from `Baselines`: the InBody is
  * the north star for body composition, and a $25 scale's body fat is a trend
@@ -661,11 +722,17 @@ function hsBody(body) {
   add('bmi',     body.bmi,             function (r) { return r.value; });
   if (!recs.length) return null;
 
-  // the last reading of the day wins, per measurement
+  // One reading per day and measurement: the FIRST before noon, because a
+  // morning weigh-in is the comparable one - an evening reading carries the
+  // day's food and water. This used to keep the LAST reading, so a morning
+  // weigh-in was replaced by any later one. No morning reading: the last.
   var best = {};
   recs.forEach(function (r) {
-    var k = r.date + '|' + r.type;
-    if (!best[k] || r.at > best[k].at) best[k] = r;
+    var k = r.date + '|' + r.type, cur = best[k];
+    if (!cur) { best[k] = r; return; }
+    var am = hsSgtHour(r.at) < 12, curAm = hsSgtHour(cur.at) < 12;
+    if (am && (!curAm || r.at < cur.at)) best[k] = r;
+    else if (!am && !curAm && r.at > cur.at) best[k] = r;
   });
 
   var sh = hsBodySheet();
@@ -784,7 +851,12 @@ function hsRollup(store, date) {
   });
 
   var sessionRecs = recs.filter(function (r) { return r.type === 'exercise'; });
-  var sessions = sessionRecs.map(function (r) { return [Date.parse(r.start), Date.parse(r.end)]; });
+  // Timing comes from ONE app's sessions: Samsung and Health Sync both write
+  // the same workout, and taking both would double its minutes. Gym detection,
+  // below, still reads every copy, because Health Sync sometimes labels as
+  // strength training a session Samsung left as "other workout".
+  var workouts = hsWorkouts(sessionRecs);
+  var sessions = workouts.map(function (w) { return [w.a, w.b]; });
   // A strength session says it was a gym day without anyone being asked; so
   // does a long unlabelled one, which is how Samsung files them.
   var gym = null;
@@ -839,27 +911,105 @@ function hsRollup(store, date) {
   var exercise = sessions.length
     ? (best('total', sessionShare) || best('active', sessionShare))
     : hsWorkoutFallback(recs);
-  var active = best('active'), activeDiscarded = false;
-  // An active total no bigger than the workout is taken to be workout-only,
-  // not the day's. Say so, rather than returning null as if nothing had come:
-  // null means "leave the cell alone", which froze a partial figure written
-  // by an earlier sync that morning in place for the rest of the day.
-  if (active && exercise && active.value <= exercise.value) { active = null; activeDiscarded = true; }
+  // With no session at all, the fallback's own calorie records are the
+  // workout's time windows.
+  if (!sessions.length && exercise && exercise.windows) workouts = exercise.windows;
+
+  // How long the workouts ran, and how many of the day's steps fell inside
+  // them: those steps are already in the workout's calories, so the burn
+  // must not count them again. Measured from a minute-by-minute step stream
+  // when there is one that accounts for the day; otherwise estimated from
+  // each workout's type and length.
+  var exMin = null, wSteps = null, measured = false;
+  if (exercise) {
+    exMin = workouts.reduce(function (sum, w) { return sum + (w.b - w.a); }, 0) / 60000;
+    var dayTotal = steps ? steps.value : 0;
+    var fine = hsMinuteSteps(recs, dayTotal), inside = 0;
+    if (fine) {
+      measured = true;
+      fine.forEach(function (r) {
+        var a = Date.parse(r.start), b = Date.parse(r.end);
+        workouts.forEach(function (w) {
+          if (b > a) inside += r.value * Math.max(0, Math.min(b, w.b) - Math.max(a, w.a)) / (b - a);
+          else if (a >= w.a && a < w.b) inside += r.value;
+        });
+      });
+    } else {
+      workouts.forEach(function (w) { inside += hsCadence(w.type) * (w.b - w.a) / 60000; });
+    }
+    wSteps = Math.round(Math.min(dayTotal, inside));
+  }
+
   return {
     superseded: superseded,
     gym: gym,
     steps: steps ? steps.value : null,
-    activeCal: active ? active.value : null,
-    activeDiscarded: activeDiscarded,
     exerciseCal: exercise ? exercise.value : null,
-    sessions: sessions.length,
+    exerciseMin: exMin == null ? null : Math.round(exMin),
+    workoutSteps: wSteps,
+    workoutStepsMeasured: measured,
+    sessions: workouts.length,
     exerciseInferred: !!(exercise && exercise.inferred),
     origins: {
       steps: steps ? steps.origin : null,
-      activeCal: active ? active.origin : null,
       exerciseCal: exercise ? exercise.origin : null
     }
   };
+}
+
+/** The day's workouts as time windows, from ONE app: Samsung Health when it
+ *  has any, otherwise whichever app recorded the most workout time. Windows
+ *  that overlap inside that app are merged, each keeping its first type. */
+function hsWorkouts(sessionRecs) {
+  var by = {};
+  sessionRecs.forEach(function (r) {
+    var a = Date.parse(r.start), b = Date.parse(r.end);
+    if (!(b > a)) return;
+    (by[r.origin] = by[r.origin] || []).push({ a: a, b: b, type: r.value });
+  });
+  var pick = null;
+  for (var i = 0; i < HS_PREFER.length; i++) if (by[HS_PREFER[i]]) { pick = HS_PREFER[i]; break; }
+  if (!pick) {
+    var most = -1;
+    Object.keys(by).forEach(function (o) {
+      var t = by[o].reduce(function (sum, w) { return sum + (w.b - w.a); }, 0);
+      if (t > most) { most = t; pick = o; }
+    });
+  }
+  if (!pick) return [];
+  var out = [];
+  by[pick].sort(function (x, y) { return x.a - y.a; }).forEach(function (w) {
+    var last = out[out.length - 1];
+    if (last && w.a < last.b) { last.b = Math.max(last.b, w.b); return; }
+    out.push({ a: w.a, b: w.b, type: w.type });
+  });
+  return out;
+}
+
+/** A step stream fine enough to see where the steps fell: one app's records
+ *  of 15 minutes or less that together account for the day's total (95% to
+ *  105%). Health Sync's per-minute copy of the watch count qualifies; the
+ *  phone's own counter falls short and is never used. Samsung's own record
+ *  spans the whole day, so it can never qualify. */
+function hsMinuteSteps(recs, dayTotal) {
+  if (!(dayTotal > 0)) return null;
+  var by = {};
+  recs.forEach(function (r) {
+    if (r.type !== 'steps' || r.origin === 'aggregate') return;
+    if ((Date.parse(r.end) - Date.parse(r.start)) / 60000 > 15) return;
+    (by[r.origin] = by[r.origin] || []).push(r);
+  });
+  var best = null, gap = Infinity;
+  Object.keys(by).forEach(function (o) {
+    var ratio = by[o].reduce(function (sum, r) { return sum + r.value; }, 0) / dayTotal;
+    if (ratio < 0.95 || ratio > 1.05) return;
+    if (Math.abs(1 - ratio) < gap) { gap = Math.abs(1 - ratio); best = by[o]; }
+  });
+  return best;
+}
+
+function hsCadence(type) {
+  return HS_CADENCE[type] != null ? HS_CADENCE[type] : HS_CADENCE_DEFAULT;
 }
 
 /** No exercise session arrived, but Samsung Health writes one total-calorie
@@ -883,9 +1033,20 @@ function hsWorkoutFallback(recs) {
   Object.keys(byOrigin).forEach(function (o) {
     if (byOrigin[o].length > 3) return;
     var sum = byOrigin[o].reduce(function (s, r) { return s + r.value; }, 0);
-    if (!top || sum > top.value) top = { value: Math.round(sum), origin: o, inferred: true };
+    if (!top || sum > top.value) {
+      top = { value: Math.round(sum), origin: o, inferred: true,
+              windows: byOrigin[o].map(function (r) {
+                return { a: Date.parse(r.start), b: Date.parse(r.end), type: null };
+              }) };
+    }
   });
   return top;
+}
+
+/** Hour of the day in Singapore for an instant in ms. Arithmetic, not a
+ *  formatter: Singapore has no daylight saving, so +8h is exact. */
+function hsSgtHour(ms) {
+  return Math.floor(((ms + 8 * 3600000) % 86400000 + 86400000) % 86400000 / 3600000);
 }
 
 function hsSgtDate(iso) {
@@ -978,37 +1139,108 @@ function upsert(sh, map, nCols, date, p) {
   return { row: row, created: created, wrote: wrote };
 }
 
-/** Compute TDEE_Target and Deficit into columns 11 and 12 for this row.
+/** Compute TDEE and Deficit into columns 11 and 12 for this row.
  *  Cleared rather than left stale when the inputs are not there. */
 function writeDerived(sh, row) {
   if (!row) return;
-  var v = sh.getRange(row, 1, 1, 12).getValues()[0];
-  var cal = v[2], steps = v[6], ac = v[7], ex = v[8], bmr = v[9];
+  var v = sh.getRange(row, 1, 1, DAILY_COLS_N).getValues()[0];
+  var cal = v[2], bmr = v[9];
   var haveNum = function (x) { return x !== '' && x != null && !isNaN(x); };
   if (!haveNum(bmr)) { sh.getRange(row, 11, 1, 2).setValue(''); return; }
-  var tdee = Math.round(Number(bmr) + activityBurn(
-    haveNum(steps) ? Number(steps) : 0,
-    haveNum(ac) ? Number(ac) : 0,
-    haveNum(ex) ? Number(ex) : 0));
+  var a = dayActivity(Number(bmr), numOrNull(v[6]), numOrNull(v[8]), numOrNull(v[14]),
+                      numOrNull(v[15]), stepWeight(cellDate(v[0])));
+  var tdee = Math.round(Number(bmr) + a.total);
   sh.getRange(row, 11).setValue(tdee);
   sh.getRange(row, 12).setValue(haveNum(cal) ? tdee - Number(cal) : '');
 }
 
-/** The day's activity calories above resting. Steps put a FLOOR under it:
- *  Samsung Health shares its step count with Health Connect but not its
- *  activity calories, so ActiveCal comes from whichever app will estimate it,
- *  and has come back barely above the workout on a 13,500-step day. Whichever
- *  of the two is larger wins; they are never added together.
+var STEP_KCAL_PER_KG = 0.0004;
+/* Only for days recorded before workout minutes were: a gross workout figure
+ * less roughly the resting burn inside it. With the minutes known, the exact
+ * resting burn is taken off instead. */
+var LEGACY_EXERCISE_FACTOR = 0.7;
+
+/** The day's activity above resting, in kcal:
  *
- *  Keep this in step with buildDays() in assets/app.js — the dashboard
- *  recomputes from source and these two must agree. */
-function activityBurn(steps, activeCal, exerciseCal) {
-  var fromCals = exerciseCal * 0.7 + Math.max(0, activeCal - exerciseCal) * 0.5;
-  var fromSteps = steps * 0.0004 * (latestScanWeight() || 75);
-  return Math.max(fromCals, fromSteps);
+ *    workouts  Samsung's workout calories, less the resting burn for the
+ *              workouts' actual duration (BMR / 1440 per minute) - those
+ *              minutes are already paid for by the BMR
+ *    steps     the steps taken OUTSIDE workouts x 0.0004 x body weight; the
+ *              steps inside a workout are already inside its calories
+ *
+ *  They are ADDED: 10,000 steps and a gym session are two activities. On a
+ *  day with no workout every step counts. A day logged before minutes were
+ *  recorded keeps the old rule, the larger of workout x 0.7 and all steps,
+ *  rather than being reinterpreted with guesses.
+ *
+ *  Keep this in step with dayActivity() in assets/app.js: the dashboard
+ *  recomputes from source and the two must agree to the calorie. */
+function dayActivity(bmr, steps, exCal, exMin, workoutSteps, weight) {
+  var perStep = STEP_KCAL_PER_KG * (weight || 75);
+  steps = steps || 0;
+  exCal = exCal || 0;
+  if (exCal > 0 && !(exMin > 0)) {
+    var w = exCal * LEGACY_EXERCISE_FACTOR, st = steps * perStep;
+    return { total: Math.max(w, st), workouts: w >= st ? w : 0, steps: w >= st ? 0 : st,
+             outsideSteps: w >= st ? 0 : steps, legacy: true };
+  }
+  var net = exCal > 0 ? Math.max(0, exCal - (bmr / 1440) * exMin) : 0;
+  var inside = exCal > 0 ? (workoutSteps != null ? workoutSteps : HS_CADENCE_DEFAULT * exMin) : 0;
+  var outside = Math.max(0, steps - Math.min(steps, inside));
+  return { total: net + outside * perStep, workouts: net, steps: outside * perStep,
+           outsideSteps: outside, legacy: false };
 }
 
-/** Weight from the newest scan that has one, for the step rate. */
+/** Weight to price a step with, as of a date: the latest MORNING weigh-in on
+ *  or before it that sits within 1 kg of its neighbours. An evening reading
+ *  carries the day's food and water; one far from its neighbours is usually
+ *  someone else on the scale (19 Sept read 1.8 kg low, 20 Sept 1.9 kg high).
+ *  No usable weigh-in: the newest InBody weight, then 75. */
+function stepWeight(date) {
+  var ws = cleanMorningWeights(), best = null;
+  for (var i = 0; i < ws.length; i++) if (!date || ws[i].date <= date) best = ws[i].kg;
+  return best || latestScanWeight() || 75;
+}
+
+var _cleanWeights = null;          // read once per request
+function cleanMorningWeights() {
+  if (_cleanWeights) return _cleanWeights;
+  var out = [];
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BODY_TAB);
+  if (sh && sh.getLastRow() >= 2) {
+    var list = [];
+    sh.getRange(2, 1, sh.getLastRow() - 1, BODY_HEAD.length).getValues().forEach(function (v) {
+      var d = cellDate(v[0]), kg = Number(v[1]);
+      if (d && kg > 0) list.push({ date: d, kg: kg, am: isMorning(v[8]) });
+    });
+    // Judged against other MORNING readings only: an evening reading is the
+    // wrong yardstick, and one could otherwise reject a good morning one.
+    var am = list.filter(function (x) { return x.am; })
+      .sort(function (x, y) { return x.date < y.date ? -1 : x.date > y.date ? 1 : 0; });
+    am.forEach(function (x, i) {
+      var near = am.slice(Math.max(0, i - 3), i).concat(am.slice(i + 1, i + 4))
+        .map(function (y) { return y.kg; }).sort(function (a, b) { return a - b; });
+      var med = near.length ? near[Math.floor(near.length / 2)] : x.kg;
+      if (Math.abs(x.kg - med) <= 1.0) out.push({ date: x.date, kg: x.kg });
+    });
+  }
+  _cleanWeights = out;
+  return out;
+}
+
+/** The Body Log's Measured cell, as text ("2026-09-24 8:19 AM") or as a date
+ *  if Sheets has converted it: was it before noon in Singapore? */
+function isMorning(v) {
+  if (v instanceof Date) return +Utilities.formatDate(v, 'Asia/Singapore', 'H') < 12;
+  var m = String(v || '').match(/\d{1,2}:\d{2}\s*(AM|PM)/i);
+  return !!m && m[1].toUpperCase() === 'AM';
+}
+
+function numOrNull(x) {
+  return (x === '' || x == null || isNaN(x)) ? null : Number(x);
+}
+
+/** Weight from the newest scan that has one: the step fallback. */
 function latestScanWeight() {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BASE);
   if (!sh || sh.getLastRow() < 2) return null;
@@ -1109,15 +1341,18 @@ function latestScanBmr() {
   return best;
 }
 
-/** Recompute TDEE and deficit for the reply. Never written to the sheet —
- *  the dashboard owns that arithmetic. */
+/** Recompute TDEE and deficit for the reply, with the same arithmetic that
+ *  wrote the row, so the two can never disagree. */
 function summarise(row) {
   if (!row) return '';
-  var bmr = row.BMR, ac = row.ActiveCal, ex = row.ExerciseCal, cal = row.Calories;
+  var cal = row.Cal_Eaten != null ? row.Cal_Eaten : row.Calories;
+  var bmr = row.BMR;
   var bits = [];
   bits.push(cal == null ? 'no intake logged' : cal + ' kcal');
   if (bmr != null) {
-    var tdee = Math.round(bmr + activityBurn(row.Steps || 0, ac || 0, ex || 0));
+    var a = dayActivity(Number(bmr), numOrNull(row.Steps), numOrNull(row.ExerciseCal),
+                        numOrNull(row.ExerciseMin), numOrNull(row.WorkoutSteps), stepWeight(row.Date));
+    var tdee = Math.round(Number(bmr) + a.total);
     bits.push('burn ' + tdee);
     if (cal != null) {
       var def = tdee - cal;
@@ -1126,7 +1361,7 @@ function summarise(row) {
   }
   if (row.Protein_g != null) bits.push('P ' + row.Protein_g + 'g');
   if (row.Fat_g != null) bits.push('F ' + row.Fat_g + 'g');
-  return bits.join(' · ');
+  return bits.join(' \u00b7 ');
 }
 
 /* ===================================================================== */

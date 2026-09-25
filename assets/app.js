@@ -388,23 +388,80 @@ function fatDrivers(notes) {
     .map(function (h) { return h.text; }).slice(0, 5);
 }
 
-function buildDays(rows, scans, targets, today) {
+/** The day's activity above resting, in kcal:
+ *
+ *    workouts  Samsung's workout calories, less the resting burn for the
+ *              workouts' actual duration (BMR / 1440 a minute) - those minutes
+ *              are already paid for by the BMR
+ *    steps     the steps taken OUTSIDE workouts x 0.0004 x body weight; the
+ *              steps inside a workout are already inside its calories
+ *
+ *  ADDED, not the larger of the two: 10,000 steps and a gym session are two
+ *  activities. A day recorded before workout minutes were keeps the old rule
+ *  (the larger of workout x 0.7 and all steps) rather than being reinterpreted.
+ *
+ *  Keep this in step with dayActivity() in sheet/api.gs: the sheet's TDEE
+ *  column is written by that one, and the two must agree to the calorie. */
+function dayActivity(bmr, steps, exCal, exMin, workoutSteps, weight) {
+  var tf = CFG.tdee || {};
+  var perStep = (tf.stepKcalPerKg == null ? 0.0004 : tf.stepKcalPerKg) * (weight || 75);
+  var legacyF = tf.exerciseFactor == null ? 0.7 : tf.exerciseFactor;
+  steps = steps || 0;
+  exCal = exCal || 0;
+  if (exCal > 0 && !(exMin > 0)) {
+    var w = exCal * legacyF, st = steps * perStep;
+    return { total: Math.max(w, st), workouts: w >= st ? w : 0, steps: w >= st ? 0 : st,
+             outsideSteps: w >= st ? 0 : steps, legacy: true };
+  }
+  var net = exCal > 0 ? Math.max(0, exCal - ((bmr || 0) / 1440) * exMin) : 0;
+  var inside = exCal > 0 ? (workoutSteps != null ? workoutSteps : 60 * exMin) : 0;
+  var outside = Math.max(0, steps - Math.min(steps, inside));
+  return { total: net + outside * perStep, workouts: net, steps: outside * perStep,
+           outsideSteps: outside, legacy: false };
+}
+
+/** Weigh-ins fit to price a step with: MORNING readings within 1 kg of their
+ *  neighbouring morning readings. An evening reading carries the day's food
+ *  and water; one far from its neighbours is usually someone else on the
+ *  scale. The same rule as cleanMorningWeights() in sheet/api.gs. */
+function cleanMorningWeights(scale) {
+  var am = scale.filter(function (r) { return r.weight != null && isMorningStamp(r.measured); })
+    .map(function (r) { return { date: r.date, kg: r.weight }; })
+    .sort(function (x, y) { return x.date < y.date ? -1 : x.date > y.date ? 1 : 0; });
+  return am.filter(function (x, i) {
+    var near = am.slice(Math.max(0, i - 3), i).concat(am.slice(i + 1, i + 4))
+      .map(function (y) { return y.kg; }).sort(function (a, b) { return a - b; });
+    var med = near.length ? near[Math.floor(near.length / 2)] : x.kg;
+    return Math.abs(x.kg - med) <= 1.0;
+  });
+}
+
+/** Was a weigh-in's "Measured" stamp before noon? It is written as
+ *  "2026-09-24 8:19 AM"; a 24-hour "20:19" is read by its hour too, so a
+ *  reformatted cell cannot silently throw every weigh-in away. */
+function isMorningStamp(v) {
+  var m = String(v || '').match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+  if (!m) return false;
+  if (m[3]) return m[3].toUpperCase() === 'AM';
+  return +m[1] < 12;
+}
+
+function buildDays(rows, scans, targets, today, scale) {
   var latestBMR = null;
   for (var i = scans.length - 1; i >= 0; i--) { if (scans[i].bmr != null) { latestBMR = scans[i].bmr; break; } }
   if (latestBMR == null) latestBMR = targets.bmr_fallback || null;
 
-  var tf = CFG.tdee || {}, exF = tf.exerciseFactor == null ? 0.7 : tf.exerciseFactor,
-      inF = tf.incidentalFactor == null ? 0.5 : tf.incidentalFactor;
-
-  // Steps set a floor under the day's activity. Samsung Health shares its step
-  // count with Health Connect but NOT its activity calories, so ActiveCal
-  // arrives from whichever app is willing to estimate it — and on a 13,500-step
-  // day that came to 8 kcal above the workout, which is nonsense. Steps are the
-  // number that matches the phone exactly, so when walking accounts for more
-  // than the calorie figures do, walking wins. Neither is added to the other.
-  var latestWeight = null;
-  for (var w = scans.length - 1; w >= 0; w--) { if (scans[w].weight != null) { latestWeight = scans[w].weight; break; } }
-  var perStep = (tf.stepKcalPerKg == null ? 0.0004 : tf.stepKcalPerKg) * (latestWeight || 75);
+  // Each day's steps are priced at that day's body weight: the latest clean
+  // morning weigh-in on or before it, else the newest InBody weight, else 75.
+  // Exactly the rule in api.gs, so the dashboard and the sheet agree.
+  var scanWeight = null;
+  for (var w = scans.length - 1; w >= 0; w--) { if (scans[w].weight != null) { scanWeight = scans[w].weight; break; } }
+  var weighIns = cleanMorningWeights(scale || []);
+  var weightOn = function (date) {
+    var best = null;
+    for (var k = 0; k < weighIns.length; k++) if (weighIns[k].date <= date) best = weighIns[k].kg;
+    return best || scanWeight || 75;
+  };
   var map = {};
 
   rows.forEach(function (r) {
@@ -413,9 +470,12 @@ function buildDays(rows, scans, targets, today) {
     var d = {
       date: date,
       dayType: normDayType(r.daytype || r.day_type),
-      cal: num(r.calories), protein: num(r.protein_g), fat: num(r.fat_g), carbs: num(r.carbs_g),
-      steps: num(r.steps), active: num(r.activecal || r.active_cal),
+      // Cal_Eaten was Calories until the sheet was migrated; read either
+      cal: num(r.cal_eaten) != null ? num(r.cal_eaten) : num(r.calories),
+      protein: num(r.protein_g), fat: num(r.fat_g), carbs: num(r.carbs_g),
+      steps: num(r.steps),
       exercise: num(r.exercisecal || r.exercise_cal),
+      exMin: num(r.exercisemin), workoutSteps: num(r.workoutsteps),
       bmr: num(r.bmr), gym: str(r.gymday || r.gym_day), notes: str(r.notes),
       logged: true
     };
@@ -426,16 +486,17 @@ function buildDays(rows, scans, targets, today) {
     // columns so the sheet reads sensibly on its own, but if a number is then
     // edited by hand the stored total goes stale — recomputing means the
     // dashboard is never wrong, whatever is sitting in those two cells.
-    var ex = d.exercise == null ? 0 : d.exercise;
-    var ac = d.active   == null ? 0 : d.active;
-    d.fromCals  = ex * exF + Math.max(0, ac - ex) * inF;
-    d.fromSteps = d.steps == null ? 0 : d.steps * perStep;
-    d.activity  = Math.max(d.fromCals, d.fromSteps);
-    d.stepFloor = d.fromSteps > d.fromCals;
+    d.stepWeight = weightOn(date);
+    var a = dayActivity(d.bmr, d.steps, d.exercise, d.exMin, d.workoutSteps, d.stepWeight);
+    d.activity     = a.total;
+    d.burnWorkouts = a.workouts;
+    d.burnSteps    = a.steps;
+    d.outsideSteps = a.outsideSteps;
+    d.legacyBurn   = a.legacy;
     if (d.bmr != null) {
       d.tdee = Math.round(d.bmr + d.activity);
     } else {
-      d.tdee = num(r.tdee_target);
+      d.tdee = num(r.tdee) != null ? num(r.tdee) : num(r.tdee_target);   // TDEE was TDEE_Target
     }
     d.deficit = (d.tdee != null && d.cal != null)
       ? Math.round(d.tdee - d.cal)
@@ -492,12 +553,27 @@ function normDayType(v) {
 /** A placeholder for a calendar date with no row. Explicitly not zero. */
 function voidDay(date) {
   return { date: date, logged: false, hasIntake: false, inProgress: false, countable: false,
-           cal: null, protein: null, fat: null, carbs: null, steps: null, active: null,
-           exercise: null, deficit: null, tdee: null, dayType: null, gym: null, notes: null,
-           activity: 0, fromCals: 0, fromSteps: 0, stepFloor: false,
+           cal: null, protein: null, fat: null, carbs: null, steps: null,
+           exercise: null, exMin: null, workoutSteps: null,
+           deficit: null, tdee: null, dayType: null, gym: null, notes: null,
+           activity: 0, burnWorkouts: 0, burnSteps: 0, outsideSteps: 0, legacyBurn: false,
            drivers: [], fatState: 'ok', proteinLow: false, proteinWarn: false, flagged: false };
 }
 function getDay(date) { return M.days[date] || voidDay(date); }
+
+/** "BMR 1,672 + workouts 448 + steps 274": the day's burn, in its parts. */
+function burnBreakdown(d) {
+  if (d.bmr == null || d.tdee == null) return '';
+  var parts = 'BMR ' + nf(Math.round(d.bmr));
+  if (d.legacyBurn) {
+    parts += d.burnWorkouts ? ' + workout &times; 0.7 ' + nf(Math.round(d.burnWorkouts))
+                            : ' + steps ' + nf(Math.round(d.burnSteps));
+  } else {
+    if (d.burnWorkouts) parts += ' + workouts ' + nf(Math.round(d.burnWorkouts));
+    if (d.burnSteps) parts += ' + steps ' + nf(Math.round(d.burnSteps));
+  }
+  return '<div class="row"><span>Burned, built from</span><b>' + parts + '</b></div>';
+}
 
 /** Whether he trained: 'yes', 'no', or null when not known.
  *  GymDay is written Yes / No, or occasionally as a split like "Day 2". The
@@ -552,14 +628,14 @@ function expectedBurn(d) {
   var vals = [];
   for (var i = 1; i <= 14; i++) {
     var p = M.days[addDays(d.date, -i)];
-    if (p && p.countable && p.tdee != null && p.bmr != null && (p.active != null || p.exercise != null)) {
+    if (p && p.countable && p.tdee != null && p.bmr != null && (p.steps != null || p.exercise != null)) {
       vals.push(p.tdee - p.bmr);            // that day's activity, above resting
     }
   }
   var soFar = d.tdee != null ? d.tdee - d.bmr : 0;
   // Without a few days of history there is no honest forecast: resting burn
   // alone would set a target hundreds of calories too low.
-  if (vals.length < 3) return (d.active != null || d.exercise != null) ? d.tdee : null;
+  if (vals.length < 3) return (d.steps != null || d.exercise != null) ? d.tdee : null;
   var c = sgtClock(), left = 1 - (c.h * 60 + c.m) / 1440;
   var more = Math.max(0, mean(vals) - soFar) * left;
   // Rounding to the nearest 10 can land BELOW the BMR on a day with no
@@ -597,22 +673,21 @@ function targetRule(t) {
 function activityLevel(d) {
   var L = CFG.activityLevels || {};
   var hEx = L.highExerciseCal == null ? 300 : L.highExerciseCal;
-  var hAc = L.highActiveCal == null ? 700 : L.highActiveCal;
   var mEx = L.medExerciseCal == null ? 100 : L.medExerciseCal;
-  var mAc = L.medActiveCal == null ? 400 : L.medActiveCal;
   var mSt = L.medSteps == null ? 7000 : L.medSteps;
   var gym = gymState(d) === 'yes';
-  if (d.exercise == null && d.active == null && d.steps == null && !gym) return null;
+  // Activity calories no longer arrive (Samsung never shares them). High still
+  // needs a workout: his own definition is gym, hiking, running, tennis, and a
+  // big walking day without one is a full day on his feet - Medium.
+  if (d.exercise == null && d.steps == null && !gym) return null;
 
   var why = [];
   if (gym) why.push(gymLabel(d) === 'Yes' ? 'gym' : String(gymLabel(d)).toLowerCase());
   if (d.exercise) why.push(nf(d.exercise) + ' kcal exercise');
   if (d.steps != null) why.push(nf(d.steps) + ' steps');
-  if (d.active != null && !d.exercise) why.push(nf(d.active) + ' kcal active');
 
-  var high = gym || (d.exercise != null && d.exercise >= hEx) || (d.active != null && d.active >= hAc);
-  var med  = (d.exercise != null && d.exercise >= mEx) || (d.active != null && d.active >= mAc) ||
-             (d.steps != null && d.steps >= mSt);
+  var high = gym || (d.exercise != null && d.exercise >= hEx);
+  var med  = (d.exercise != null && d.exercise >= mEx) || (d.steps != null && d.steps >= mSt);
   return { level: high ? 'High' : med ? 'Medium' : 'Low', why: why.join(' · ') };
 }
 
@@ -1044,7 +1119,8 @@ function renderToday() {
   h += '<div class="sec"><div class="sec-head"><h2>Activity</h2><span class="lbl">Samsung Health</span></div>' +
        '<div class="grid g4">' +
          cell('Steps', d.steps == null ? null : nf(d.steps), null, null, d.inProgress && d.steps != null ? 'so far today' : null) +
-         cell('Active', d.active == null ? null : nf(d.active), 'kcal', null, d.inProgress && d.active != null ? 'so far today' : null) +
+         cell('Workout', d.exMin == null ? null : nf(d.exMin), 'min', null,
+              d.exMin == null ? null : d.workoutSteps != null ? nf(d.workoutSteps) + ' steps inside' : null) +
          cell('Exercise', d.exercise == null ? null : nf(d.exercise), 'kcal', null,
               d.exercise != null && d.inProgress ? 'so far today' : null) +
          (function () {
@@ -1154,6 +1230,9 @@ function heroDetails(d, t) {
   rows.push(['plan', nf(plan) + (share < plan ? ' \u00b7 floored' : '')]);
   rows.push(['eaten', nf(eaten)]);
   if (burned != null) rows.push(['burned so far', nf(burned)]);
+  // what the activity part of the burn is made of, so far today
+  if (d.burnWorkouts) rows.push(['  workouts, net of resting', '+' + nf(Math.round(d.burnWorkouts))]);
+  if (d.burnSteps) rows.push(['  steps outside workouts', '+' + nf(Math.round(d.burnSteps))]);
   if (eaten > plan) rows.push(['past plan', '+' + nf(Math.round(eaten - plan))]);
   var def = Math.round(burn - eaten);
   rows.push(['deficit \u00b7 burn less eaten', (def >= 0 ? '+' : '\u2212') + nf(Math.abs(def))]);
@@ -1292,13 +1371,6 @@ function heroProgress(d, t) {
     '</div>' +
   '</div>';
   return h;
-}
-
-/** Lime at or under the target; amber over it but still under the burn, so
- *  still a deficit, just a smaller one; red past the burn, a surplus. */
-function energyClass(eaten, target, burn) {
-  if (target == null) return burn != null && eaten > burn ? 'bad' : '';
-  return eaten <= target ? 'good' : burn != null && eaten <= burn ? 'caution' : 'bad';
 }
 
 /** Estimated calories burned from midnight until now: resting burn for the
@@ -1456,6 +1528,76 @@ function rollingCell(r) {
       (good ? '≈ ' + nf(r.avg * 7 / 7700, 2) + ' kg of fat per week.' : 'Currently in surplus.') +
       (r.pendingToday ? ' Today counts from midnight.' : '') +
     '</span></div>';
+}
+
+/* The burn formula is an estimate of an INPUT; weight is a measured OUTCOME.
+ * Over enough days, energy balance says:
+ *
+ *     burn = average intake - (weight trend kg/day x 7,700)
+ *
+ * The trend is a least-squares fit through every clean morning weigh-in, not
+ * first-minus-last, and the range comes from how much his weigh-ins scatter
+ * around it (about 0.3 kg day to day). Below six weeks that range is too wide
+ * to judge the formula by; the cell says so rather than pretending. */
+var SCALE_KCAL_PER_KG = 7700;
+var SCALE_MIN_DAYS = 42;          // below this the 95% range is roughly +/-100 or worse
+
+function scaleCheck() {
+  var weighIns = cleanMorningWeights(M.scale || []);
+  if (weighIns.length < 10) return { state: 'none', n: weighIns.length };
+  // the window: from the first clean weigh-in (at most 90 days back) to the
+  // last finished day - today is still eating
+  var end = addDays(M.today, -1);
+  var start = weighIns[0].date, floor = addDays(end, -89);
+  if (start < floor) start = floor;
+  var fed = calendarRange(start, end).map(getDay).filter(function (d) { return d.countable; });
+  var pts = weighIns.filter(function (w) { return w.date >= start && w.date <= end; });
+  if (fed.length < 14 || pts.length < 10) return { state: 'none', n: pts.length, fed: fed.length };
+
+  var x0 = parseYMD(start), xs = pts.map(function (w) { return (parseYMD(w.date) - x0) / 86400000; });
+  var ys = pts.map(function (w) { return w.kg; });
+  var n = xs.length, mx = mean(xs), my = mean(ys), sxx = 0, sxy = 0;
+  for (var i = 0; i < n; i++) { sxx += (xs[i] - mx) * (xs[i] - mx); sxy += (xs[i] - mx) * (ys[i] - my); }
+  if (!sxx) return { state: 'none', n: n };
+  var slope = sxy / sxx, ss = 0;
+  for (var j = 0; j < n; j++) { var e = ys[j] - (my + slope * (xs[j] - mx)); ss += e * e; }
+  var se = Math.sqrt(ss / Math.max(1, n - 2)) / Math.sqrt(sxx);
+
+  var intake = mean(fed.map(function (d) { return d.cal; }));
+  var model = mean(fed.filter(function (d) { return d.tdee != null; }).map(function (d) { return d.tdee; }));
+  var span = Math.round((parseYMD(end) - x0) / 86400000) + 1;
+  return {
+    state: span >= SCALE_MIN_DAYS ? 'ok' : 'early',
+    implied: intake - slope * SCALE_KCAL_PER_KG,
+    band: 1.96 * se * SCALE_KCAL_PER_KG,
+    model: model, intake: intake, slope: slope,
+    days: fed.length, weighIns: n, span: span, start: start, end: end
+  };
+}
+
+function scaleCheckCell(c) {
+  var lbl = '<span class="lbl">Your weight says your burn is</span>';
+  if (c.state === 'none') {
+    return '<div class="cell">' + lbl + '<span class="big none">\u2014</span>' +
+      '<span class="sub">Needs at least 10 morning weigh-ins and 14 logged days. ' +
+      nf(c.n || 0) + ' clean weigh-in' + (c.n === 1 ? '' : 's') + ' so far.</span></div>';
+  }
+  var gap = Math.round(c.model - c.implied), within = Math.abs(gap) <= c.band;
+  var verdict;
+  if (c.state === 'early') {
+    verdict = 'Too early to judge the formula: ' + c.span + ' of ' + SCALE_MIN_DAYS +
+      ' days, so the range is still wide. ';
+  } else {
+    verdict = within ? 'Inside the range: the formula stands. '
+                     : 'Outside the range: the formula is running ' + (gap > 0 ? 'HIGH' : 'LOW') + '. ';
+  }
+  return '<div class="cell">' + lbl +
+    '<span class="big' + (c.state === 'ok' && !within ? ' caution' : '') + '">' + nf(Math.round(c.implied)) +
+      '<span class="u">\u00b1 ' + nf(Math.round(c.band)) + ' kcal/day</span></span>' +
+    '<span class="sub">' + verdict + 'NutriBoii\u2019s burn averaged ' + nf(Math.round(c.model)) +
+      ' over the same ' + c.days + ' days (' + (gap >= 0 ? '+' : '\u2212') + nf(Math.abs(gap)) + '). From ' +
+      c.weighIns + ' morning weigh-ins, ' + fmtDay(c.start, { weekday: undefined, day: 'numeric', month: 'short' }) +
+      ' to ' + fmtDay(c.end, { weekday: undefined, day: 'numeric', month: 'short' }) + '.</span></div>';
 }
 
 function projectionCell(p, t) {
@@ -1698,6 +1840,7 @@ function renderTrends() {
   '</div>';
 
   h += '<div class="grid g2">' + projectionCell(p, t) + rollingCell(rollingDeficit(M.today, CFG.rollingWindowDays || 7)) + '</div>';
+  h += '<div class="grid g2">' + scaleCheckCell(scaleCheck()) + '</div>';
 
   h += '<div class="sec"><div class="sec-head"><h2>Body composition</h2>' +
     '<span class="lbl">' + (bodySource === 'scale'
@@ -1952,13 +2095,12 @@ function openDay(date) {
       row('Carbs', d.carbs, 'g') +
       '<h3>Activity</h3>' +
       row('Steps', d.steps, '') +
-      row('Active calories', d.active, 'kcal') +
       row('Exercise calories', d.exercise, 'kcal') +
+      row('Workout minutes', d.exMin, 'min') +
+      row('Steps inside workouts', d.workoutSteps, '') +
       row('Activity level', (function () { var a = activityLevel(d); return a && a.level; })(), '') +
-      // say it plainly when the burn came from steps rather than from the
-      // calorie figures, so the number can always be traced
-      (d.stepFloor && d.steps ? '<div class="row"><span>Activity counted from</span>' +
-        '<b>' + nf(d.steps) + ' steps &rarr; ' + nf(Math.round(d.fromSteps)) + ' kcal</b></div>' : '') +
+      // how the burn was built, so every number can be traced back
+      burnBreakdown(d) +
       row('Gym', gymLabel(d), '') +
       '</div>';
     if (d.fatState === 'over') {
@@ -2071,7 +2213,7 @@ function load() {
 
   var T = CFG.tabs || {};
   return Promise.all([
-    fetchTab(T.daily     || 'Daily Log', 'daily', true,  ['calories', 'protein_g', 'daytype']),
+    fetchTab(T.daily     || 'Daily Log', 'daily', true,  ['cal_eaten', 'calories', 'protein_g', 'daytype']),
     fetchTab(T.baselines || 'Baselines', 'baselines', false, ['skeletalmuscle_kg', 'bodyfatmass_kg']),
     fetchTab(T.targets   || 'Targets',   'targets', false, ['key', 'metric', 'setting']),
     fetchTab(T.body      || 'Body Log',  'body',    false, ['leanmass_kg', 'bonemass_kg', 'bmi', 'source'])
@@ -2080,7 +2222,7 @@ function load() {
     M.targets = resolveTargets(res[2]);
     M.scale   = buildScale(res[3]);
     M.scans   = buildScans(res[1]);
-    M.days    = buildDays(res[0], M.scans, M.targets, M.today);
+    M.days    = buildDays(res[0], M.scans, M.targets, M.today, M.scale);
     M.dates   = Object.keys(M.days).sort();
     M.first   = M.dates[0] || null;
     M.last    = M.dates[M.dates.length - 1] || null;

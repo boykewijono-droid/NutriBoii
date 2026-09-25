@@ -21,7 +21,7 @@
  *   - all four DayTypes, and today logged so the hero is populated
  *   - four InBody scans trending down, which unlocks the pace projection
  *
- * TDEE_Target and Deficit are left BLANK on purpose: that is the normal path,
+ * TDEE and Deficit are left BLANK on purpose: that is the normal path,
  * and it makes the dashboard do the arithmetic rather than trusting the sheet.
  */
 

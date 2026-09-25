@@ -2,8 +2,13 @@
    land in the wrong column, so that is what most of these assert. */
 const fs = require('fs');
 
-const DAILY_HDR = ['Date','DayType','Calories','Protein_g','Fat_g','Carbs_g','Steps',
+/* The sheet starts as his real one did: 14 columns, the old names. The API
+ * migrates it on first touch, so every test also runs the migration. */
+const OLD_HDR = ['Date','DayType','Calories','Protein_g','Fat_g','Carbs_g','Steps',
   'ActiveCal','ExerciseCal','BMR','TDEE_Target','Deficit','GymDay','Notes'];
+/* ...and as the API leaves it. Rows are read back by position with these. */
+const DAILY_HDR = ['Date','DayType','Cal_Eaten','Protein_g','Fat_g','Carbs_g','Steps',
+  'ActiveCal','ExerciseCal','BMR','TDEE','Deficit','GymDay','Notes','ExerciseMin','WorkoutSteps'];
 const BASE_HDR = ['Date','Weight_kg','BodyFat_pct','BodyFatMass_kg','SkeletalMuscle_kg','BMR','Notes'];
 
 function makeSheet(header) {
@@ -110,7 +115,7 @@ const ok = (n, c, x) => { c ? (pass++, console.log('  PASS  ' + n))
                             : (fail++, console.log('  FAIL  ' + n + (x ? '\n        ' + String(x).slice(0, 300) : ''))); };
 
 function setup() {
-  const sheets = { 'Daily Log': makeSheet(DAILY_HDR), 'Baselines': makeSheet(BASE_HDR) };
+  const sheets = { 'Daily Log': makeSheet(OLD_HDR), 'Baselines': makeSheet(BASE_HDR) };
   const store = { 'nutriboii.apiSecret': 'TESTTOKEN' };
   return { sheets, store };
 }
@@ -143,7 +148,7 @@ console.log('\n=== THE BUG THIS EXISTS TO KILL: named fields, blanks in the midd
   const row = rowOf(sheets, 'Daily Log', '2026-09-12');
   const named = {}; DAILY_HDR.forEach((h, i) => named[h] = row[i]);
   console.log('  ' + JSON.stringify(named));
-  ok('Calories in Calories', named.Calories === 755);
+  ok('Calories in Calories', named.Cal_Eaten === 755);
   ok('BMR in BMR, NOT ExerciseCal', named.BMR === 1672 && named.ExerciseCal === '',
      'BMR=' + named.BMR + ' ExerciseCal=' + named.ExerciseCal);
   ok('Notes in Notes, NOT GymDay', /first meal only/.test(named.Notes) && named.GymDay === '',
@@ -152,7 +157,7 @@ console.log('\n=== THE BUG THIS EXISTS TO KILL: named fields, blanks in the midd
   ok('omitted ActiveCal stays blank, not 0', named.ActiveCal === '');
   // Derived on write now, so the sheet reads on its own. No activity logged
   // for this day, so TDEE is just the BMR.
-  ok('TDEE_Target derived and written', named.TDEE_Target === 1672, 'got ' + named.TDEE_Target);
+  ok('TDEE derived and written', named.TDEE === 1672, 'got ' + named.TDEE);
   ok('Deficit derived and written', named.Deficit === 1672 - 755, 'got ' + named.Deficit);
   ok('summary reports the computed deficit', /deficit \+/.test(r.summary), r.summary);
 }
@@ -178,13 +183,17 @@ console.log('\n=== partial updates through the day ===');
   ok('second call updated, did not duplicate',
      sheets['Daily Log']._grid.filter(r => String(r[0]).slice(0, 10) === '2026-09-12').length === 1);
   ok('reported as an update not a create', r2.updated === true && r2.created === false);
-  ok('fields overwritten', named.Calories === 1795 && named.Protein_g === 171);
+  ok('fields overwritten', named.Cal_Eaten === 1795 && named.Protein_g === 171);
   ok('DayType accepted', named.DayType === 'Busy');
   // the morning row had 755 kcal and no activity; the evening call adds both,
   // so the derived columns must be recomputed, not left at morning numbers
-  const eTdee = Math.round(1672 + 410 * 0.7 + (700 - 410) * 0.5);
-  ok('TDEE_Target refreshed on update', named.TDEE_Target === eTdee,
-     'expected ' + eTdee + ' got ' + named.TDEE_Target);
+  // No workout minutes were sent, so this is a legacy-shaped day: the larger
+  // of workout x 0.7 and every step, and ActiveCal plays no part. No scan
+  // weight exists here, so a step is priced at 75 kg.
+  //   max(410 x 0.7, 9950 x 0.0004 x 75) = max(287, 298.5) = 298.5
+  const eTdee = Math.round(1672 + 298.5);                              // 1971
+  ok('TDEE refreshed on update', named.TDEE === eTdee,
+     'expected ' + eTdee + ' got ' + named.TDEE);
   ok('Deficit refreshed on update', named.Deficit === eTdee - 1795,
      'expected ' + (eTdee - 1795) + ' got ' + named.Deficit);
 
@@ -244,7 +253,7 @@ console.log('\n=== field aliases all land on the right column ===');
   const named = {}; DAILY_HDR.forEach((h, i) => named[h] = row[i]);
   console.log('  ' + JSON.stringify(named));
   ok('Protein_g alias', named.Protein_g === 160);
-  ok('kcal alias -> Calories', named.Calories === 1900);
+  ok('kcal alias -> Calories', named.Cal_Eaten === 1900);
   ok('active/exercise aliases', named.ActiveCal === 700 && named.ExerciseCal === 400);
   ok('gym alias -> GymDay', named.GymDay === 'Day 3');
   ok('note alias -> Notes', named.Notes === 'alias test');
@@ -288,17 +297,37 @@ console.log('\n=== BMR inherited from the newest scan ===');
   })());
 }
 
+console.log('\n=== a day logged WITH workout minutes uses the new burn ===');
+{
+  // Chat can send exerciseMin and workoutSteps too; then the burn is
+  // BMR + the workout net of its resting minutes + the steps outside it.
+  const { sheets, store } = setup();
+  const r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+    date: '2026-09-12', calories: '1800', bmr: '1672', steps: '9950',
+    exerciseCal: '410', exerciseMin: '60', workoutSteps: '780' }));
+  const row = rowOf(sheets, 'Daily Log', '2026-09-12');
+  ok('minutes and workout steps land in their own columns', row[14] === 60 && row[15] === 780,
+     JSON.stringify(row.slice(14)));
+  // 1672 + (410 - 1672/1440 x 60) + (9950 - 780) x 0.0004 x 75
+  //  = 1672 + 340.33 + 275.10 = 2287.4
+  ok('TDEE by the new formula', row[10] === 2287, 'got ' + row[10]);
+  ok('the reply summary agrees with the cell', r.summary.indexOf('burn 2287') >= 0, r.summary);
+  ok('the reply names the columns by their new headers',
+     r.row && r.row.Cal_Eaten === 1800 && r.row.TDEE === 2287 && r.row.ExerciseMin === 60, JSON.stringify(r.row));
+}
+
 console.log('\n=== read back, POST, and the tap-link page ===');
 {
   const { sheets, store } = setup();
   call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-12',
                         calories: '1795', protein: '171', bmr: '1672', activeCal: '700', exerciseCal: '410' });
   let r = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'get', format: 'json', date: '2026-09-12' }));
-  ok('get returns the row by name', r.found && r.row.Calories === 1795);
+  ok('get returns the row by name', r.found && r.row.Cal_Eaten === 1795);
   console.log('  summary: ' + r.summary);
-  // derive the expectation from the agreed formula rather than a magic number
-  const eTdee = Math.round(1672 + 410 * 0.7 + (700 - 410) * 0.5);   // 2104
-  const eDef = eTdee - 1795;                                        // 309
+  // legacy-shaped (no minutes) and no steps: 1672 + 410 x 0.7. ActiveCal 700
+  // would have added (700 - 410) x 0.5 = 145 under the old formula.
+  const eTdee = Math.round(1672 + 410 * 0.7);                        // 1959
+  const eDef = eTdee - 1795;                                        // 164
   ok('summary computes TDEE + deficit per the formula',
      r.summary.indexOf('burn ' + eTdee) >= 0 && r.summary.indexOf('deficit +' + eDef) >= 0,
      'expected target ' + eTdee + ' / deficit +' + eDef + ', got: ' + r.summary);
@@ -309,7 +338,7 @@ console.log('\n=== read back, POST, and the tap-link page ===');
   const p = call(sheets, store, { }, 'POST',
     { token: 'TESTTOKEN', action: 'log', date: '2026-09-14', calories: 1700, protein: 165, dayType: 'Rest' });
   const pj = JSON.parse(p.text);
-  ok('POST JSON body works', pj.ok && pj.row.Calories === 1700, p.text.slice(0, 160));
+  ok('POST JSON body works', pj.ok && pj.row.Cal_Eaten === 1700, p.text.slice(0, 160));
   ok('POST returns JSON not HTML', p.kind === 'json');
 
   // GET without format=json should render a page
@@ -335,7 +364,7 @@ console.log('\n=== logging a meal WITHOUT reading the day first ===');
     date: '2026-09-19', addCalories: '250', addProtein: '8', addFat: '14', mealNote: 'home coffee + full cream milk' }));
   ok('first meal creates the day', call1.ok, call1.error);
   let named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
-  ok('calories start at the meal', named.Calories === 250, 'got ' + named.Calories);
+  ok('calories start at the meal', named.Cal_Eaten === 250, 'got ' + named.Cal_Eaten);
   ok('macros too', named.Protein_g === 8 && named.Fat_g === 14);
   ok('carbs untouched, not zeroed', named.Carbs_g === '', JSON.stringify(named.Carbs_g));
 
@@ -343,10 +372,10 @@ console.log('\n=== logging a meal WITHOUT reading the day first ===');
     date: '2026-09-19', addCalories: '640', addProtein: '45', addFat: '22', addCarbs: '60',
     mealNote: 'chicken rice, no skin' }));
   named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
-  ok('THE POINT: the second meal ADDS, it does not replace', named.Calories === 890, 'got ' + named.Calories);
+  ok('THE POINT: the second meal ADDS, it does not replace', named.Cal_Eaten === 890, 'got ' + named.Cal_Eaten);
   ok('protein adds up', named.Protein_g === 53, 'got ' + named.Protein_g);
   ok('carbs start from blank and become 60', named.Carbs_g === 60, 'got ' + named.Carbs_g);
-  ok('the reply reports what the totals became', call2.added && call2.added.Calories === 890,
+  ok('the reply reports what the totals became', call2.added && call2.added.Cal_Eaten === 890,
      JSON.stringify(call2.added));
 
   const lines = String(named.Notes).split('\n');
@@ -364,7 +393,7 @@ console.log('\n=== absolute values still correct a mistake ===');
   call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-19', addCalories: '900' });
   call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json', date: '2026-09-19', calories: '1750' });
   const named = {}; DAILY_HDR.forEach((h, i) => named[h] = rowOf(sheets, 'Daily Log', '2026-09-19')[i]);
-  ok('calories= sets the total outright', named.Calories === 1750, 'got ' + named.Calories);
+  ok('calories= sets the total outright', named.Cal_Eaten === 1750, 'got ' + named.Cal_Eaten);
 }
 
 console.log('\n=== a bad add is refused, not silently ignored ===');
@@ -426,14 +455,14 @@ console.log('\n=== unlog: a meal comes back out of BOTH the diary and the total 
   log(780, 48, 'pesto chicken panuozzo, mesclun, red onion, mozzarella');
   log(145, 3, 'tiramisu, 50g');
   const named = () => { const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]); return o; };
-  ok('three meals logged', named().Calories === 1005, 'got ' + named().Calories);
+  ok('three meals logged', named().Cal_Eaten === 1005, 'got ' + named().Cal_Eaten);
 
   const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
     date: '2026-09-22', match: 'panuozzo' }));
   ok('it reports what it removed', out.ok && /panuozzo/.test(out.removed), JSON.stringify(out));
   ok('the calories come from the line\'s own bracket', out.kcal === 780, String(out.kcal));
   const after = named();
-  ok('THE POINT: the total drops by exactly that', after.Calories === 225, 'got ' + after.Calories);
+  ok('THE POINT: the total drops by exactly that', after.Cal_Eaten === 225, 'got ' + after.Cal_Eaten);
   ok('the line is gone from the diary', !/panuozzo/.test(String(after.Notes)), String(after.Notes));
   ok('the other meals are untouched',
      /office coffee/.test(String(after.Notes)) && /tiramisu/.test(String(after.Notes)), String(after.Notes));
@@ -454,8 +483,8 @@ console.log('\n=== unlog: macros come back too, when they are offered ===');
     date: '2026-09-22', match: 'panuozzo', subProtein: '48', subFat: '30', subCarbs: '70' }));
   const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
   ok('calories, protein, fat and carbs all come off',
-     o.Calories === 145 && o.Protein_g === 3 && o.Fat_g === 9 && o.Carbs_g === 15, JSON.stringify(o));
-  ok('and the reply says what each became', out.totals && out.totals.Calories === 145 && out.totals.Protein_g === 3,
+     o.Cal_Eaten === 145 && o.Protein_g === 3 && o.Fat_g === 9 && o.Carbs_g === 15, JSON.stringify(o));
+  ok('and the reply says what each became', out.totals && out.totals.Cal_Eaten === 145 && out.totals.Protein_g === 3,
      JSON.stringify(out.totals));
 }
 
@@ -473,7 +502,7 @@ console.log('\n=== unlog refuses rather than guesses ===');
   ok('two matches removes nothing', !two.ok && /2 meals/.test(two.error), JSON.stringify(two));
   ok('and it lists them so the caller can be specific', /full cream/.test(two.error) && /low fat/.test(two.error), two.error);
   const still = {}; DAILY_HDR.forEach((h, i) => still[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
-  ok('the day is untouched after a refusal', still.Calories === 870, 'got ' + still.Calories);
+  ok('the day is untouched after a refusal', still.Cal_Eaten === 870, 'got ' + still.Cal_Eaten);
 
   const none = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json',
     date: '2026-09-22', match: 'laksa' }));
@@ -507,7 +536,7 @@ console.log('\n=== unlog never touches the fat line, only meals ===');
   ok('the meal bullet goes', out.ok && !/- char kway teow/.test(String(o.Notes)), String(o.Notes));
   ok('the fat line stays: it is not a meal and carries no calories',
      /fat over from char kway teow/.test(String(o.Notes)), String(o.Notes));
-  ok('the total drops by the meal only', o.Calories === 0, 'got ' + o.Calories);
+  ok('the total drops by the meal only', o.Cal_Eaten === 0, 'got ' + o.Cal_Eaten);
 }
 
 console.log('\n=== unlog: a line with no bracket asks, it does not invent ===');
@@ -552,7 +581,7 @@ console.log('\n=== unlog: the same meal logged twice can actually be undone ==='
   const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', '2026-09-22')[i]);
   ok('it removes one of them instead of refusing', out.ok, out.error);
   ok('exactly one copy is left', String(o.Notes).split('office coffee').length - 1 === 1, String(o.Notes));
-  ok('and only one meal came off the total', o.Calories === 80, 'got ' + o.Calories);
+  ok('and only one meal came off the total', o.Cal_Eaten === 80, 'got ' + o.Cal_Eaten);
   ok('the reply says it was one of two identical lines',
      out.duplicates === 2 && /one of 2 identical lines/.test(out.summary), out.summary);
 

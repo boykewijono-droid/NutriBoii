@@ -77,8 +77,8 @@ function run(ss) {
   new Function(...keys, src + '\nsetUpNutriBoii();')(...keys.map(k => sandbox[k]));
 }
 
-const EXPECT_DAILY = ['Date','DayType','Calories','Protein_g','Fat_g','Carbs_g','Steps',
-  'ActiveCal','ExerciseCal','BMR','TDEE_Target','Deficit','GymDay','Notes'];
+const EXPECT_DAILY = ['Date','DayType','Cal_Eaten','Protein_g','Fat_g','Carbs_g','Steps',
+  'ActiveCal','ExerciseCal','BMR','TDEE','Deficit','GymDay','Notes','ExerciseMin','WorkoutSteps'];
 const EXPECT_BASE = ['Date','Weight_kg','BodyFat_pct','BodyFatMass_kg','SkeletalMuscle_kg','BMR','Notes'];
 const EXPECT_TGT  = ['Key','Value','Unit','Notes'];
 
@@ -95,7 +95,7 @@ function check(label, ss) {
   console.log('  tabs      : ' + ss.getSheets().map(s => s.getName()).join(', '));
   console.log('  Daily row1: ' + JSON.stringify(d._row1));
   ok('Daily Log header exactly right', eq(d._row1, EXPECT_DAILY), JSON.stringify(d._row1));
-  ok('Daily Log is 14 columns wide', d._cols === 14, 'cols=' + d._cols);
+  ok('Daily Log is 16 columns wide', d._cols === EXPECT_DAILY.length, 'cols=' + d._cols);
   ok('Notes present in Daily Log', d._row1.indexOf('Notes') === 13);
   ok('Date is column A', d._row1[0] === 'Date');
   ok('Baselines header right', eq(b._row1, EXPECT_BASE), JSON.stringify(b._row1));

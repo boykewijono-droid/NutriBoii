@@ -14,8 +14,14 @@
 const fs = require('fs');
 const path = require('path');
 
-const DAILY_HDR = ['Date','DayType','Calories','Protein_g','Fat_g','Carbs_g','Steps',
+/* The sheet as it stands BEFORE this change: 14 columns, old names. Every
+ * world starts here, so every test also runs the in-place migration. */
+const OLD_HDR = ['Date','DayType','Calories','Protein_g','Fat_g','Carbs_g','Steps',
   'ActiveCal','ExerciseCal','BMR','TDEE_Target','Deficit','GymDay','Notes'];
+/* ...and as the API leaves it: two renamed, two appended. `row()` reads by
+ * position with these names. */
+const DAILY_HDR = ['Date','DayType','Cal_Eaten','Protein_g','Fat_g','Carbs_g','Steps',
+  'ActiveCal','ExerciseCal','BMR','TDEE','Deficit','GymDay','Notes','ExerciseMin','WorkoutSteps'];
 const BASE_HDR = ['Date','Weight_kg','BodyFat_pct','BodyFatMass_kg','SkeletalMuscle_kg','BMR','Notes'];
 
 function makeSheet(name, header) {
@@ -29,7 +35,10 @@ function makeSheet(name, header) {
         if (grid[r] && grid[r].some(v => v !== '' && v != null)) return r + 1;
       return 0;
     },
-    getLastColumn: () => n,
+    getLastColumn: () => Math.max(n, ...grid.map(g => g.length)),
+    _maxCols: n,
+    getMaxColumns: () => s._maxCols,
+    insertColumnsAfter: (after, k) => { s._maxCols += k; },
     getMaxRows: () => Math.max(grid.length, 1000),
     insertRowsAfter: () => {},
     hideSheet: () => { s._hidden = true; },
@@ -59,7 +68,7 @@ function makeSheet(name, header) {
 const SRC = fs.readFileSync(path.join(__dirname, 'api.gs'), 'utf8');
 
 function world() {
-  const sheets = { 'Daily Log': makeSheet('Daily Log', DAILY_HDR), 'Baselines': makeSheet('Baselines', BASE_HDR) };
+  const sheets = { 'Daily Log': makeSheet('Daily Log', OLD_HDR), 'Baselines': makeSheet('Baselines', BASE_HDR) };
   sheets['Baselines'].getRange(2, 1, 1, 7).setValues([['2026-09-11', 75.9, 20.6, 15.6, 34.3, 1672, '']]);
   return { sheets, store: { 'nutriboii.apiSecret': 'T' }, clock: 0 };
 }
@@ -121,11 +130,27 @@ const at = (ymd, h, extraMs) => {
   return new Date(Date.UTC(y, m - 1, d) + (h - 8) * 3600000 + (extraMs || 0)).toISOString();
 };
 
-/** the day's activity above resting: calorie figures, floored by steps */
-const WEIGHT = 75.9;                       // the scan in world()
-const activityBurn = (steps, ac, ex) =>
-  Math.max(ex * 0.7 + Math.max(0, ac - ex) * 0.5, (steps || 0) * 0.0004 * WEIGHT);
-const burn = (bmr, steps, ac, ex) => Math.round(bmr + activityBurn(steps || 0, ac || 0, ex || 0));
+/** The burn: BMR + workouts net of their resting minutes + steps OUTSIDE
+ *  workouts. The hand-worked numbers beside each use of it are the check that
+ *  this mirror is itself right. */
+const WEIGHT = 75.9;                       // the scan in world(); no weigh-ins
+const PER_MIN = 1672 / 1440;               // 1.16111 kcal a minute at rest
+const tdee = (steps, exCal, exMin, wSteps, weight) => {
+  const perStep = 0.0004 * (weight || WEIGHT);
+  steps = steps || 0; exCal = exCal || 0;
+  if (exCal > 0 && !(exMin > 0)) return Math.round(1672 + Math.max(exCal * 0.7, steps * perStep));
+  const net = exCal > 0 ? Math.max(0, exCal - PER_MIN * exMin) : 0;
+  const inside = exCal > 0 ? (wSteps != null ? wSteps : 60 * exMin) : 0;
+  return Math.round(1672 + net + Math.max(0, steps - Math.min(steps, inside)) * perStep);
+};
+/** Health Sync's per-minute copy of the watch count: `perMin` steps in every
+ *  minute from h1 to h2 (Singapore hours). */
+const minuteSteps = (ymd, h1, h2, perMin, origin) => {
+  const out = [];
+  for (let m = Math.round(h1 * 60); m < Math.round(h2 * 60); m++)
+    out.push({ count: perMin, start_time: at(ymd, m / 60), end_time: at(ymd, (m + 1) / 60), metadata: md(origin || HSYNC) });
+  return out;
+};
 
 const SAMSUNG = 'com.sec.android.app.shealth', HSYNC = 'nl.appyhapps.healthsync';
 const md = (origin) => ({ data_origin: origin || SAMSUNG, recording_method: 'automatically_recorded' });
@@ -147,7 +172,8 @@ const payload = (o) => Object.assign({ timestamp: new Date().toISOString(), app_
 const row = (w, date) => {
   const r = w.sheets['Daily Log']._grid.slice(1).find(x => String(x[0]).slice(0, 10) === date);
   if (!r) return null;
-  const o = {}; DAILY_HDR.forEach((h, i) => o[h] = r[i]); return o;
+  // a cell never written reads as blank, exactly as the real sheet returns it
+  const o = {}; DAILY_HDR.forEach((h, i) => o[h] = r[i] === undefined ? '' : r[i]); return o;
 };
 const rawKeys = (w) => w.sheets['Activity Sync']._grid.slice(1).map(x => x[0]).filter(Boolean);
 
@@ -170,10 +196,16 @@ console.log('\n=== a sync with the app\'s default settings builds the day ===');
   eq('ok', r.ok, true);
   const d = row(w, TODAY);
   eq('steps from the daily total', d.Steps, 8200);
-  eq('active calories written (more than the workout, so all-day)', d.ActiveCal, 610);
+  eq('active calories are NOT written: they were never Samsung\'s', d.ActiveCal, '');
   eq('exercise = the workout record only; the all-day total is not exercise', d.ExerciseCal, 350);
+  eq('the workout ran 60 minutes', d.ExerciseMin, 60);
+  // no minute-by-minute steps, so a strength session is taken at 13 a minute
+  eq('steps inside it estimated from its type: 13/min x 60', d.WorkoutSteps, 780);
   eq('new row inherits BMR from the newest scan', d.BMR, 1672);
-  eq('TDEE derived from the calorie figures, which beat 8,200 steps here', d.TDEE_Target, burn(1672, 8200, 610, 350));
+  // 1672 + (350 - 1.16111 x 60) + (8200 - 780) x 0.0004 x 75.9
+  //  = 1672 + 280.33 + 225.27 = 2177.6
+  eq('TDEE: BMR + the workout net of its resting minutes + the steps outside it', d.TDEE, 2178);
+  eq('the same arithmetic as the mirror', d.TDEE, tdee(8200, 350, 60, 780));
   eq('no calories eaten yet, so deficit stays blank', d.Deficit, '');
   eq('DayType untouched', d.DayType, '');
   eq('raw records kept in a hidden tab', [!!w.sheets['Activity Sync'], w.sheets['Activity Sync']._hidden], [true, true]);
@@ -187,7 +219,7 @@ console.log('\n=== THE HOURLY CASE: each sync re-sends today\'s running total ==
   call(w, payload({ steps: [stepsDay(TODAY, 11, 5000)], active_calories: [activeDay(TODAY, 11, 205)] }));
   const d = row(w, TODAY);
   eq('steps are the latest total, 5000, not 3000+4200+5000', d.Steps, 5000);
-  eq('active calories are the latest total, 205', d.ActiveCal, 205);
+  eq('active calories arrived three times and were written none of them', d.ActiveCal, '');
   eq('superseded totals are deleted from the raw tab', rawKeys(w).length, 2);
 }
 
@@ -197,7 +229,7 @@ console.log('\n=== the same payload twice does not double anything ===');
   const p = payload({ steps: [stepsDay(TODAY, 9, 1200)], active_calories: [activeDay(TODAY, 9, 90)] });
   call(w, p); call(w, p);
   eq('steps still 1200', row(w, TODAY).Steps, 1200);
-  eq('active still 90', row(w, TODAY).ActiveCal, 90);
+  eq('and nothing else written', row(w, TODAY).ActiveCal, '');
 }
 
 console.log('\n=== after midnight, yesterday\'s final total replaces its 23:00 total ===');
@@ -299,9 +331,11 @@ console.log('\n=== food logged by Claude is left alone ===');
   const d = row(w, TODAY);
   eq('steps filled', d.Steps, 9000);
   eq('calories, protein, fat, day type and notes unchanged',
-     [d.Calories, d.Protein_g, d.Fat_g, d.DayType, d.Notes], [1540, 147, 68, 'Busy', 'lunch at hawker']);
+     [d.Cal_Eaten, d.Protein_g, d.Fat_g, d.DayType, d.Notes], [1540, 147, 68, 'Busy', 'lunch at hawker']);
   eq('still one row for the date', w.sheets['Daily Log']._grid.filter(x => String(x[0]).slice(0, 10) === TODAY).length, 1);
-  eq('deficit derived now that calories exist, steps included', d.Deficit, burn(1672, 9000, 0, 0) - 1540);
+  // a rest day: every step counts. 1672 + 9000 x 0.0004 x 75.9 = 1945.2
+  eq('a rest day counts every step', d.TDEE, 1945);
+  eq('deficit derived now that calories exist', d.Deficit, 1945 - 1540);
 }
 
 console.log('\n=== what does not arrive stays blank, never 0 ===');
@@ -314,42 +348,21 @@ console.log('\n=== what does not arrive stays blank, never 0 ===');
   eq('no exercise session, so ExerciseCal stays blank', d.ExerciseCal, '');
 }
 
-console.log('\n=== workout-only active calories are not passed off as all-day ===');
+console.log('\n=== the sync never writes ActiveCal, whatever arrives ===');
 {
-  const w = world();
-  call(w, payload({ exercise: [session(TODAY, 18, 19)],
-                    total_calories: [rawCal(TODAY, 18, 19, 380)],
-                    active_calories: [activeDay(TODAY, 20, 300)] }));
-  const d = row(w, TODAY);
-  eq('ExerciseCal 380', d.ExerciseCal, 380);
-  eq('ActiveCal 300 is below the workout, so left blank for Claude to ask', d.ActiveCal, '');
-}
-
-console.log('\n=== a morning value is cleared, not frozen, when the workout arrives ===');
-{
-  // 24 Sept: an early sync wrote 13 before the workout synced. The workout
-  // then arrived and the rule decided the active total was workout-only -
-  // and "leave the cell alone" kept 13 there all day, while 88 kcal of records
-  // sat in the store. 6 of 8 recent days were frozen this way.
+  // Samsung sends Health Connect no activity calories at all. What arrived in
+  // their place was Health Sync's, it was never the number Samsung shows, and
+  // a rule that tried to judge it froze a stale morning value on 6 of 8 days.
+  // So the sync no longer writes the column.
   const w = world();
   call(w, payload({ active_calories: [activeDay(TODAY, 9, 13)] }));
-  eq('before the workout, the partial total is written', row(w, TODAY).ActiveCal, 13);
-  call(w, payload({ exercise: [session(TODAY, 18, 19)],
+  eq('active calories alone create nothing', row(w, TODAY), null);
+  call(w, payload({ steps: [stepsDay(TODAY, 20, 5000)],
+                    exercise: [session(TODAY, 18, 19)],
                     total_calories: [rawCal(TODAY, 18, 19, 535)],
-                    active_calories: [activeDay(TODAY, 20, 88)] }));
-  const d = row(w, TODAY);
-  eq('the workout arrives', d.ExerciseCal, 535);
-  eq('and the stale 13 is CLEARED, not left standing', d.ActiveCal, '');
-}
-
-console.log('\n=== an all-day total bigger than the workout still replaces the old one ===');
-{
-  const w = world();
-  call(w, payload({ active_calories: [activeDay(TODAY, 9, 13)] }));
-  call(w, payload({ exercise: [session(TODAY, 18, 19)],
-                    total_calories: [rawCal(TODAY, 18, 19, 300)],
                     active_calories: [activeDay(TODAY, 20, 610)] }));
-  eq('the real all-day figure is written over the morning one', row(w, TODAY).ActiveCal, 610);
+  eq('with a real day around them, still not written', row(w, TODAY).ActiveCal, '');
+  eq('while the rest of the day is', [row(w, TODAY).Steps, row(w, TODAY).ExerciseCal], [5000, 535]);
 }
 
 console.log('\n=== calorie records partly inside a session ===');
@@ -363,9 +376,13 @@ console.log('\n=== calorie records partly inside a session ===');
 console.log('\n=== old raw records are pruned ===');
 {
   const w = world();
-  call(w, payload({ steps: [rawSteps(shift(TODAY, -9), 9, 10, 500), rawSteps(TODAY, 9, 10, 600)] }));
-  eq('only the recent record is kept', rawKeys(w).length, 1);
-  eq('a 9-day-old record does not rewrite that old day', row(w, shift(TODAY, -9)), null);
+  call(w, payload({ steps: [rawSteps(shift(TODAY, -9), 9, 10, 500), rawSteps(TODAY, 9, 10, 600),
+                            rawSteps(shift(TODAY, -40), 9, 10, 700)] }));
+  eq('only the recent record is kept in the raw tab', rawKeys(w).length, 1);
+  // a manual "Past 30 days" sync must be able to fill history, so a day up to
+  // 35 days old is rebuilt even though its raw records are then pruned
+  eq('a 9-day-old day IS rebuilt from a resend', row(w, shift(TODAY, -9)).Steps, 500);
+  eq('a 40-day-old one is beyond any resend and left alone', row(w, shift(TODAY, -40)), null);
 }
 
 console.log('\n=== no exercise session: a workout-shaped calorie record stands in ===');
@@ -409,23 +426,164 @@ console.log('\n=== a too-short calorie record is not a workout ===');
 }
 
 
-console.log('\n=== a big walking day is not credited with nothing ===');
+console.log('\n=== a workout with no session record still has its steps taken out ===');
 {
-  // Samsung shares steps but no activity calories, so ActiveCal arrives barely
-  // above the workout. Steps have to carry the day.
+  // The 18 Sept walk arrived as a workout-shaped calorie record with no
+  // session, because that data type was off. Its own span is the window.
   const w = world();
   call(w, payload({
     steps: [rawSteps(TODAY, 7, 22, 13564)],
-    active_calories: [rawCal(TODAY, 7, 22, 454)],
     total_calories: [rawCal(TODAY, 21, 22.4, 446)],
   }));
   const d = row(w, TODAY);
-  const fromCals = 446 * 0.7 + Math.max(0, 454 - 446) * 0.5;      // 316
-  const fromSteps = 13564 * 0.0004 * WEIGHT;                      // 412
-  eq('steps carry it, and the two are never added', d.TDEE_Target, Math.round(1672 + Math.max(fromCals, fromSteps)));
-  eq('which is more than the calorie figures alone would give', d.TDEE_Target > Math.round(1672 + fromCals), true);
-  eq('ActiveCal itself is untouched, still what the phone sent', d.ActiveCal, 454);
+  eq('the inferred workout ran 84 minutes', d.ExerciseMin, 84);
+  eq('its steps estimated at the default 60/min, type unknown', d.WorkoutSteps, 5040);
+  // 1672 + (446 - 1.16111 x 84) + (13564 - 5040) x 0.0004 x 75.9
+  //  = 1672 + 348.47 + 258.79 = 2279.3
+  eq('workout and outside steps are ADDED', d.TDEE, 2279);
 }
+
+console.log('\n=== THE POINT: 10,000 steps and a gym session are two activities ===');
+{
+  // A rest-of-day of walking plus a gym session. The old rule took the larger
+  // of the two and threw the other away.
+  const w = world();
+  call(w, payload({
+    steps: [rawSteps(TODAY, 0, 24, 10000, SAMSUNG)],
+    exercise: [session(TODAY, 18, 19.25, SAMSUNG, 0)],                 // 75 min, "other workout"
+    total_calories: [rawCal(TODAY, 18, 19.25, 535, SAMSUNG)],
+  }));
+  const d = row(w, TODAY);
+  eq('75 minutes', d.ExerciseMin, 75);
+  eq('no minute stream: gym at 13 steps a minute, 975 inside', d.WorkoutSteps, 975);
+  // 1672 + (535 - 1.16111 x 75) + (10000 - 975) x 0.0004 x 75.9
+  //  = 1672 + 447.92 + 274.00 = 2393.9
+  eq('BMR + gym + the 9,025 steps outside it', d.TDEE, 2394);
+  eq('which is more than either alone', d.TDEE > tdee(10000, 0, null, null) && d.TDEE > 1672 + 448, true);
+}
+
+console.log('\n=== a walk\'s own steps are not counted twice ===');
+{
+  // 21 Sept: a 72-minute walk put 6,609 of the day's steps inside it. Health
+  // Sync's per-minute copy of the watch count shows exactly which.
+  const w = world();
+  const inWalk = minuteSteps(TODAY, 20.5, 21.5, 92);                   // 60 min x 92 = 5,520
+  const before = minuteSteps(TODAY, 9, 10, 50);                        // 3,000 outside it
+  call(w, payload({
+    steps: [rawSteps(TODAY, 0, 24, 8520, SAMSUNG)].concat(before, inWalk),
+    exercise: [session(TODAY, 20.5, 21.5, SAMSUNG, 79)],
+    total_calories: [rawCal(TODAY, 20.5, 21.5, 360, SAMSUNG)],
+  }));
+  const d = row(w, TODAY);
+  eq('the steps are Samsung\'s day total, not the minute copy added to it', d.Steps, 8520);
+  eq('steps inside the walk are MEASURED from the minute stream', d.WorkoutSteps, 5520);
+  // 1672 + (360 - 1.16111 x 60) + (8520 - 5520) x 0.0004 x 75.9
+  //  = 1672 + 290.33 + 91.08 = 2053.4
+  eq('the walk counts once, as the walk', d.TDEE, 2053);
+}
+
+console.log('\n=== a step stream that does not account for the day is not trusted ===');
+{
+  // The phone's own counter ran 84-93% of the watch's. Measuring a workout's
+  // steps from it would take off steps the watch counted and the phone missed.
+  const w = world();
+  const phone = 'com.android.healthconnect.phone';
+  call(w, payload({
+    steps: [rawSteps(TODAY, 0, 24, 10000, SAMSUNG)].concat(minuteSteps(TODAY, 8, 22, 10, phone)),  // 8,400 = 84%
+    exercise: [session(TODAY, 18, 19, SAMSUNG, 79)],
+    total_calories: [rawCal(TODAY, 18, 19, 300, SAMSUNG)],
+  }));
+  eq('84% coverage: estimated at 90/min instead, 5,400', row(w, TODAY).WorkoutSteps, 5400);
+}
+
+console.log('\n=== the same workout from two apps is one workout ===');
+{
+  // Samsung and Health Sync both write the session; Health Sync sometimes
+  // relabels it strength training. Minutes must not double.
+  const w = world();
+  call(w, payload({
+    steps: [rawSteps(TODAY, 0, 24, 4000, SAMSUNG)],
+    exercise: [session(TODAY, 17, 18.4, SAMSUNG, 0), session(TODAY, 17, 18.4, HSYNC, 70)],
+    total_calories: [rawCal(TODAY, 17, 18.4, 529, SAMSUNG), rawCal(TODAY, 17, 18.4, 529, HSYNC)],
+  }));
+  const d = row(w, TODAY);
+  eq('84 minutes, not 168', d.ExerciseMin, 84);
+  eq('calories once, not twice', d.ExerciseCal, 529);
+  eq('and Health Sync\'s label still makes it a gym day', d.GymDay, 'Yes');
+}
+
+console.log('\n=== a day recorded before minutes were keeps its old arithmetic ===');
+{
+  // History has ExerciseCal but no ExerciseMin. Reinterpreting it with guessed
+  // minutes would quietly rewrite the past, so it keeps the old rule: the
+  // larger of workout x 0.7 and every step.
+  const w = world();
+  // ActiveCal 700 is ABOVE the workout, so the old formula would have added
+  // (700 - 529) x 0.5 = 85.5 for it. Only then can the test tell whether it
+  // is really gone.
+  w.sheets['Daily Log'].getRange(2, 1, 1, 14).setValues([[TODAY, '', 1900, '', '', '', 8098, 700, 529, 1672, '', '', '', '']]);
+  call(w, payload({ steps: [stepsDay(TODAY, 23, 8098)] }));
+  const d = row(w, TODAY);
+  eq('no minutes on record', d.ExerciseMin, '');
+  // max(529 x 0.7, 8098 x 0.0004 x 75.9) = max(370.3, 245.9) = 370.3
+  eq('old rule without ActiveCal: 1672 + 370', d.TDEE, 2042);
+  // the old formula: 1672 + 529 x 0.7 + (700 - 529) x 0.5 = 2127.8
+  eq('ActiveCal 700 adds nothing: not the 2,128 it used to give', d.TDEE !== 2128, true);
+}
+
+console.log('\n=== steps are priced at the latest MORNING weigh-in ===');
+{
+  // Lost weight since the InBody: a step now costs less. An evening reading
+  // carries the day's food, and one far from its neighbours is usually
+  // someone else on the scale, so neither is used.
+  const w = world();
+  const ZEPP = 'com.xiaomi.hm.health';
+  const days = [-6, -5, -4, -3, -2, -1].map(n => shift(TODAY, n));
+  call(w, payload({
+    weight: [
+      { kilograms: 75.7, time: at(days[0], 8), metadata: md(ZEPP) },
+      { kilograms: 75.6, time: at(days[1], 8), metadata: md(ZEPP) },
+      { kilograms: 73.9, time: at(days[2], 8), metadata: md(ZEPP) },     // 1.7 below: someone else
+      { kilograms: 75.5, time: at(days[3], 8), metadata: md(ZEPP) },
+      { kilograms: 77.4, time: at(days[4], 23.5), metadata: md(ZEPP) },  // late evening only
+      { kilograms: 75.4, time: at(days[5], 8), metadata: md(ZEPP) },
+    ],
+    steps: [stepsDay(TODAY, 20, 10000)],
+  }));
+  // 1672 + 10000 x 0.0004 x 75.4 = 1973.6
+  eq('yesterday\'s 75.4 morning reading prices today\'s steps', row(w, TODAY).TDEE, 1974);
+  eq('not the InBody\'s 75.9', row(w, TODAY).TDEE !== tdee(10000, 0), true);
+}
+
+console.log('\n=== the evening outlier is skipped for the step price ===');
+{
+  const w = world();
+  const ZEPP = 'com.xiaomi.hm.health';
+  call(w, payload({
+    weight: [{ kilograms: 75.6, time: at(shift(TODAY, -2), 8), metadata: md(ZEPP) },
+             { kilograms: 77.5, time: at(shift(TODAY, -1), 23.6), metadata: md(ZEPP) }],
+    steps: [stepsDay(TODAY, 20, 10000)],
+  }));
+  // 77.5 is an evening reading, so 75.6 prices the steps: 1672 + 302.4
+  eq('the morning 75.6 is used, not the evening 77.5', row(w, TODAY).TDEE, 1974);
+}
+
+console.log('\n=== an old sheet is brought up to date in place ===');
+{
+  const w = world();
+  w.sheets['Daily Log'].getRange(2, 1, 1, 14).setValues([[YEST, 'Gym', 2000, 140, 85, 169, 13676, 421, 449, 1672, 2087, 87, 'Yes', 'kept']]);
+  call(w, payload({ steps: [stepsDay(TODAY, 9, 1000)] }));
+  const h = w.sheets['Daily Log']._grid[0];
+  eq('Calories is now Cal_Eaten', h[2], 'Cal_Eaten');
+  eq('TDEE_Target is now TDEE', h[10], 'TDEE');
+  eq('two columns appended', [h[14], h[15]], ['ExerciseMin', 'WorkoutSteps']);
+  eq('the sheet was widened to hold them', w.sheets['Daily Log']._maxCols, 16);
+  const y = row(w, YEST);
+  eq('existing data did not move', [y.Cal_Eaten, y.Steps, y.ExerciseCal, y.GymDay, y.Notes], [2000, 13676, 449, 'Yes', 'kept']);
+  call(w, payload({ steps: [stepsDay(TODAY, 10, 1500)] }));
+  eq('running it again changes nothing', w.sheets['Daily Log']._grid[0].slice(0, 16).join(','), DAILY_HDR.join(','));
+}
+
 
 
 console.log('\n=== the daily scale: weight and body fat land in their own tab ===');
@@ -446,7 +604,7 @@ console.log('\n=== the daily scale: weight and body fat land in their own tab ==
     ['Date','Weight_kg','BodyFat_pct','LeanMass_kg','BoneMass_kg','BodyWater_kg','BMI','Source','Measured']
       .forEach((h, i) => o[h] = x ? x[i] : null); return o; };
   eq('a Body Log tab appears', !!tab, true);
-  eq('THE POINT: the last weigh-in of the day wins, not the first or the sum', row(TODAY).Weight_kg, 76.1);
+  eq('THE POINT: the morning weigh-in is kept; the 21:00 one does not replace it', row(TODAY).Weight_kg, 75.85);
   eq('yesterday keeps its own reading', row(YEST).Weight_kg, 76.4);
   eq('body fat from the scale', row(TODAY).BodyFat_pct, 22.9);
   eq('lean mass and bone mass too', [row(TODAY).LeanMass_kg, row(TODAY).BoneMass_kg], [55.34, 2.96]);

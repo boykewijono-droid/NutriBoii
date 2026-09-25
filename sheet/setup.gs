@@ -32,18 +32,20 @@ var ROWS = 400;
 var DAILY_COLS = [
   ['Date',         'date',   'Local Singapore date, ISO format YYYY-MM-DD. One row per day.'],
   ['DayType',      'text',   'Exactly one of: Rest, Busy, Gym, Treat.'],
-  ['Calories',     'int',    'Total kcal eaten.'],
+  ['Cal_Eaten',    'int',    'Total kcal eaten.'],
   ['Protein_g',    'int',    'Grams.'],
   ['Fat_g',        'int',    'Grams.'],
   ['Carbs_g',      'int',    'Grams.'],
-  ['Steps',        'int',    'Samsung Health. Safe for an automated writer to fill.'],
-  ['ActiveCal',    'int',    'Samsung Health activity calories. Automatable.'],
-  ['ExerciseCal',  'int',    'Samsung Health exercise calories. Automatable.'],
+  ['Steps',        'int',    'Samsung Health daily step total. Written by the phone sync.'],
+  ['ActiveCal',    'int',    'No longer written or used: Samsung never shares its activity calories. Kept so older rows still read.'],
+  ['ExerciseCal',  'int',    'Samsung Health workout calories, as it reports them. Written by the phone sync.'],
   ['BMR',          'int',    'Latest InBody BMR. Blank = dashboard uses newest Baselines row.'],
-  ['TDEE_Target',  'int',    'BMR + ExerciseCal*0.7 + (ActiveCal-ExerciseCal)*0.5. Blank = dashboard computes it.'],
-  ['Deficit',      'int',    'TDEE_Target - Calories. Blank = dashboard computes it.'],
+  ['TDEE',         'int',    'Burned: BMR + workouts less their resting minutes + steps outside workouts x 0.0004 x morning weight.'],
+  ['Deficit',      'int',    'TDEE - Cal_Eaten. Blank = dashboard computes it.'],
   ['GymDay',       'text',   'Yes or No. A split name such as "Day 3" also works.'],
-  ['Notes',        'text',   'Free text. Name the foods when fat goes over — the dashboard surfaces them.']
+  ['Notes',        'text',   'Free text. Name the foods when fat goes over \u2014 the dashboard surfaces them.'],
+  ['ExerciseMin',  'int',    'How long the day\'s workouts ran. Written by the phone sync.'],
+  ['WorkoutSteps', 'int',    'Steps taken during workouts, already inside their calories. Written by the phone sync.']
 ];
 
 var BASE_COLS = [

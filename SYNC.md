@@ -29,16 +29,23 @@ through Claude.
 
 | Sheet column | Syncs? | Notes |
 |---|---|---|
-| `Steps` | **Yes** | |
+| `Steps` | **Yes** | Samsung Health's daily total |
 | `ExerciseCal` | **Yes** | Calories from workouts you record in Samsung Health |
-| `ActiveCal` | **Probably not** | See below |
+| `ExerciseMin` | **Yes** | How long those workouts ran |
+| `WorkoutSteps` | **Yes** | Steps taken during them — measured, or estimated from the workout type |
+| `ActiveCal` | **No, and not needed** | See below |
 
-**ActiveCal is the gap.** Samsung shares its *exercise* data with Health
-Connect, but not its all-day *activity tracker* data, which is where the
-active-calories figure comes from
-([Samsung Developer](https://developer.samsung.com/health/blog/en/accessing-samsung-health-data-through-health-connect)).
-So ActiveCal stays blank (never 0) and Claude asks you for it once, at night,
-with the day's totals. If your phone does share it, it fills in by itself.
+**Samsung never shares its activity calories**
+([Samsung Developer](https://developer.samsung.com/health/blog/en/accessing-samsung-health-data-through-health-connect)),
+and that is fine: the burn doesn't use them. It is built from steps and
+workouts, which do sync exactly — see *How the burn is worked out* in the
+README. The `ActiveCal` column is no longer written.
+
+**Keep Health Sync running.** Samsung sends one step total for the whole day,
+which can't say which steps fell inside a workout. Health Sync writes the same
+watch count into Health Connect minute by minute, and that is what lets the
+burn take a walk's own steps out instead of counting them twice. Without it the
+steps inside a workout are estimated from its type instead.
 
 ## Setup
 
@@ -86,9 +93,9 @@ from GitHub and keeps it updated.
 Obtainium checks for updates in the background and notifies you. The app's
 name on the phone is **HC Webhook**.
 
-When HC Webhook first asks for Health Connect access, allow these four and
-nothing else: **Steps**, **Active Calories**, **Total Calories**, **Exercise
-Sessions**.
+When HC Webhook first asks for Health Connect access, allow **Steps**, **Total
+Calories** and **Exercise Sessions**. **Active Calories** is no longer used;
+allowing it does no harm.
 
 Prefer to pay, or to skip Obtainium? The [Play Store version](https://play.google.com/store/apps/details?id=com.hcwebhook.app)
 works exactly the same with every step here.
@@ -116,11 +123,13 @@ To seed some history the first time: **Manual Sync → Past 30 Days → Sync Now
 
 ### 4. Choose the data types
 
-In the app's **Data Types**, switch on the same four: **Steps**, **Active
-Calories**, **Total Calories**, **Exercise Sessions**.
+In the app's **Data Types**, switch on **Steps**, **Total Calories** and
+**Exercise Sessions**.
 
-Then set **Resolution → Full** for **Steps** and **Active Calories**. Total
-Calories is already Full by default.
+Then set **Resolution → Full** for **Steps**. Total Calories is already Full by
+default. Full matters twice over: it keeps each app's count separate, and it is
+what carries Health Sync's minute-by-minute steps — on Daily, NutriBoii can
+only estimate which steps fell inside a workout.
 
 This matters. On the **Daily** default the app sends one figure per day, which
 Health Connect has already merged across every app that writes steps — and
@@ -182,9 +191,11 @@ The first sync looks back 48 hours. Within a few seconds:
   It's the raw record store and trims itself to the last week.
 - the dashboard shows the steps with **"so far today"** under them.
 
-**Optional: fill in last week.** Manual Sync → **Past 7 Days** → Sync Now. This
-*replaces* any Steps, ActiveCal or ExerciseCal Claude wrote for those days with
-Samsung's own numbers. They should match anyway.
+**Fill in history.** Manual Sync → **Past 30 Days** → Sync Now. Days up to 35
+back are rebuilt from a resend, so this fills `ExerciseMin` and `WorkoutSteps`
+in for past workouts too; the raw records are still trimmed to a week
+afterwards. It *replaces* Steps and ExerciseCal for those days with Samsung's
+own numbers, and never touches food.
 
 If nothing appears in the Sheet, check that the URL has the right token and
 ends in `&action=sync`, and that step 1 was published as a **new version**.
@@ -208,10 +219,13 @@ The app's **Logs** screen shows each post it made.
 - **ExerciseCal counts only calories inside a workout**, so an all-day calorie
   total is never mistaken for exercise. The same workout arriving from two apps
   counts once.
-- **Food is never touched.** The sync writes only Steps, ActiveCal and
-  ExerciseCal. Calories, macros, day type and notes stay as Claude wrote them.
-- **Today stays open** on the dashboard until Claude logs the day type with your
-  final totals. Hourly activity doesn't close it.
+- **Food is never touched.** The sync writes only Steps, ExerciseCal,
+  ExerciseMin and WorkoutSteps. Cal_Eaten, macros, day type and notes stay as
+  Claude wrote them.
+- **Today closes itself at midnight.** Hourly activity doesn't close it, and
+  neither does anything else.
+- **Weigh-ins: one per day, the morning one.** A second weigh-in never adds to
+  the first, and an evening one never replaces a morning one.
 
 ## Changing how often
 
