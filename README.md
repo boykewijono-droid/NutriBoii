@@ -318,7 +318,18 @@ so a deploy is always a new URL and no browser can serve the old one.
 
 Forgetting to restamp would put the bug straight back, so `app.test.js`
 recomputes the hash and fails if `index.html` disagrees, printing the value
-to use. `scratchpad/patch_cachebust.py` restamps.
+to use. `npm run stamp` restamps.
+
+## Tests
+
+`npm install` once (it fetches jsdom, a browser for the tests), then
+`npm test`. Seven suites: the Sheet API (`sheet/*.test.js`), the dashboard's
+pure functions (`assets/app.test.js`, which also guards the cache stamp and
+fails if a live Web App URL or token turns up in any file), and the dashboard
+itself (`assets/dom.test.js`): the real page booted on fixed data at a fixed
+clock, 14:00 on 5 Oct 2026, and read back as he would read it, from the Today
+card and the day sheet to the scale check on Trends. Every number those tests expect is
+worked out by hand in a comment beside it.
 
 ## Keeping it private
 

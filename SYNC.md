@@ -266,7 +266,7 @@ Checked:
 - the payload format, against the webhook app's source code, not just its README
 - the POST reaching the live API and getting a proper JSON reply after Google's
   redirect, the same way the app sends it
-- everything above, in `node sheet/api-sync.test.js` (46 checks)
+- everything above, in `node sheet/api-sync.test.js`
 
 Only a real sync will show:
 

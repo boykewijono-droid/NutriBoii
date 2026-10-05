@@ -2290,7 +2290,8 @@ document.addEventListener('visibilitychange', function () {
 
 // Once a minute while the tab is visible: re-read the Sheet if the date has
 // rolled over at midnight or the refresh interval has passed (the phone pushes
-// activity hourly), and re-check the Night theme schedule.
+// activity hourly), and re-apply the theme in case the phone switched to dark
+// mode while the page was asleep and missed the change event.
 setInterval(function () {
   applyTheme();
   if (document.hidden || loading || !sheetId() || !lastLoad) return;

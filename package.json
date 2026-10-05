@@ -1,0 +1,12 @@
+{
+  "name": "nutriboii",
+  "private": true,
+  "description": "NutriBoii dashboard and Sheet API. Nothing here is built: the dashboard is served as-is by GitHub Pages; this file only pins what the tests need.",
+  "scripts": {
+    "stamp": "node tools/stamp.js",
+    "test": "node assets/app.test.js && node assets/dom.test.js && node sheet/api.test.js && node sheet/api-sync.test.js && node sheet/api-encoding.test.js && node sheet/setup.test.js && node sheet/sample-data.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.2"
+  }
+}
