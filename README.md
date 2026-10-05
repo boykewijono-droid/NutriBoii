@@ -110,7 +110,10 @@ That is what turns the log from a record into something that breaks the pattern.
 ### InBody scans
 
 A new row in `Baselines` per scan — date, weight, body fat %, fat mass, muscle,
-BMR. The newest row becomes the current baseline. Two or more rows unlock the
+BMR. With **Health Connect linking** on in the InBody app, the phone sync writes
+that row itself — weight, body fat % and BMR; skeletal muscle has no Health
+Connect type, so it is the one number Claude adds by hand. Setup:
+[SYNC.md § 3c](SYNC.md). The newest row becomes the current baseline. Two or more rows unlock the
 projection. `BodyFatMass_kg` can be left blank and is derived from weight × BF%.
 
 ---

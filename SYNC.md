@@ -8,22 +8,22 @@ Samsung Health ──▶ Health Connect ──▶ HC Webhook app ──▶ Nutri
    (built-in link)     (on the phone)      (posts every 60 min)       (action=sync)
 ```
 
-## Where Health Sync fits: it doesn't, and that's fine
+## Where Health Sync fits: it supplies the minute-by-minute steps
 
-Keep Health Sync exactly as it is: **Weight** and **Nutrition** from Google Fit
-into Samsung Health, everything else unticked. Don't tick Steps or Activities
-for NutriBoii's sake.
+**Keep Health Sync installed, writing Samsung Health's steps into Health
+Connect.** Samsung's own link sends one step total for the whole day, which
+can't say which steps fell inside a workout. Health Sync writes the same watch
+count minute by minute, and that is what lets the burn take a walk's own steps
+out instead of counting them twice. The API only uses it when it accounts for
+95-105% of Samsung's total, and Samsung's number stays the day's step count.
 
-Samsung Health has its own built-in link to Health Connect, and that is all
-this needs. Adding Health Sync on top would only write the same steps a second
-time. The API copes with that, but one path is easier to trust and to debug.
+What Health Sync must NOT be is a source of activity calories: it writes some,
+they were never Samsung's, and the API ignores them.
 
-**A heads-up on your weight path.** Zepp Life → Google Fit → Health Sync →
-Samsung Health depends on Google Fit, whose APIs Google is shutting down by the
-end of 2026 ([Google Fit](https://developers.google.com/fit/rest)). When that
-path stops, look for a Health Connect option in Zepp Life or in Health Sync.
-Nothing in NutriBoii depends on it: InBody scans go into the Baselines tab
-through Claude.
+**A heads-up on the scale path.** Zepp Life → Google Fit → Health Connect
+depends on Google Fit, whose APIs Google is shutting down by the end of 2026
+([Google Fit](https://developers.google.com/fit/rest)). When that path stops,
+look for a Health Connect option in Zepp Life itself.
 
 ## What will and won't sync
 
@@ -102,22 +102,47 @@ works exactly the same with every step here.
 
 ### 3b. The daily scale, if you use one
 
-A Mi Body Composition Scale reaches Health Connect the same way the steps do:
-scale → Zepp Life → Health Sync → Samsung Health → Health Connect. If yours is
-already there, NutriBoii can take a weigh-in a day without you typing anything.
+A Mi Body Composition Scale reaches Health Connect through Google Fit: scale →
+Zepp Life → Google Fit → Health Connect. (Not through Samsung Health: Samsung
+shows other apps' data but never passes it on.) In Health Connect, Google Fit
+needs permission to **write** Weight and Body fat, or nothing arrives.
 
-- In HC Webhook, also switch on **Weight** and **Body Fat** (and **Lean Body
-  Mass**, **Bone Mass**, **BMI** if your scale reports them), and allow the
+- In HC Webhook, also switch on **Weight** and **Body Fat**, and allow the
   matching Health Connect permissions.
-- Readings land in their own **`Body Log`** tab, one row per day — the **last**
-  weigh-in of the day, since a second reading replaces the first rather than
-  adding to it.
+- Readings land in their own **`Body Log`** tab, one row per day: the **first
+  reading before noon**. A second weigh-in never adds to the first, and an
+  evening one never replaces a morning one — the morning reading is the one the
+  burn prices steps with.
 - Trends then offers a toggle: **InBody** or **Daily scale**.
 
 **The InBody stays the north star.** A $25 scale's body fat is a trend line,
-not a measurement: it is consistent enough to show a direction over a fortnight
-and not accurate enough to plan against. Nothing from the scale touches the
-`Baselines` tab, and the pace projection still uses InBody scans only.
+not a measurement. Nothing from the scale touches the `Baselines` tab, and the
+pace projection uses InBody scans only.
+
+### 3c. InBody scans, straight from the InBody app
+
+Each scan can write its own row in `Baselines`, BMR included, with nobody
+typing it.
+
+1. In the **InBody app**: turn on **Health Connect linking**. Turn **Google
+   Fit integration OFF** — a scan relayed through Fit arrives labelled "Google
+   Fit", exactly like your Mi scale, and would land in `Body Log` as a daily
+   weigh-in.
+2. In **HC Webhook → Data Types**: switch on **Weight**, **Body Fat** and
+   **Basal Metabolic Rate**.
+3. Run **Manual Sync → Past 30 Days** once to pick up recent scans.
+
+What arrives: **weight, body fat %, and BMR** (Health Connect stores BMR in
+watts; the API converts: × 20.65 = kcal a day). What can't: **skeletal
+muscle** — Health Connect has no data type for it, so no app can send it. It
+only appears in the scan history table, so nothing is lost but that column;
+ask Claude Chat to add it from a screenshot if you want it. Fat mass is left
+for the dashboard to work out from weight × body fat.
+
+A scan arriving without a weight never starts a row (BMR switched on later just
+completes the existing one), and a scan never blanks anything Claude Chat
+already wrote. The next new day picks up the new BMR; days already logged keep
+the BMR they had.
 
 To seed some history the first time: **Manual Sync → Past 30 Days → Sync Now**.
 

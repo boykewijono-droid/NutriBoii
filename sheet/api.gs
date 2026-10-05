@@ -617,8 +617,10 @@ function hsSync(e) {
     });
 
     // Weigh-ins first, so a morning weigh-in in this same payload already
-    // prices today's steps.
+    // prices today's steps; and an InBody scan first too, so a day row created
+    // below already inherits the scan's BMR.
     var scale = hsBody(body);
+    var scan = hsInBody(body);
 
     var rebuildFrom = hsShift(todaySGT(), -HS_REBUILD_DAYS);
     var keepFrom = hsShift(todaySGT(), -HS_KEEP_DAYS);
@@ -663,7 +665,7 @@ function hsSync(e) {
     var weighed = scale ? Object.keys(scale) : [];
     return {
       ok: true, action: 'sync', received: incoming.length,
-      stored: Object.keys(store).length, days: days, body: scale,
+      stored: Object.keys(store).length, days: days, body: scale, scan: scan,
       // what ELSE the phone sent, so it is obvious which data types are on
       sent: Object.keys(body).filter(function (k) { return Array.isArray(body[k]) && body[k].length; }),
       summary: incoming.length + ' record' + (incoming.length === 1 ? '' : 's') + ' received; ' +
@@ -756,6 +758,62 @@ function hsBody(body) {
   });
   sortByDate(sh);
   return out;
+}
+
+/* --- InBody scans, from the InBody app itself ------------------------- */
+/* With "Health Connect linking" on, the InBody app writes each scan into
+ * Health Connect: weight, body fat %, and BMR - the last as a POWER, in
+ * watts, which is how Health Connect stores a metabolic rate. Those become the
+ * scan's row in Baselines, so a scan reaches the plan without anyone typing it,
+ * and the next new day row picks up its BMR.
+ *
+ * What it cannot carry: skeletal muscle has no Health Connect type at all, so
+ * no app can send it. It is never written here and never blanked - a value
+ * Chat added stays. Fat mass is not written either: the dashboard derives it
+ * from weight x body fat when blank, so a copy could only ever disagree.
+ *
+ * Only a record whose origin is the InBody app counts. The same scan relayed
+ * through Google Fit arrives labelled as Fit, indistinguishable from the Mi
+ * scale - so the InBody app's Google Fit link should stay off. */
+var INBODY_ORIGIN = 'com.inbody2014.inbody';
+var KCAL_PER_DAY_PER_WATT = 86400 / 4184;     // a watt for a day, in kcal: 20.65
+
+function hsInBody(body) {
+  var by = {};
+  function take(list, field, valueOf) {
+    (Array.isArray(list) ? list : []).forEach(function (rec) {
+      if (!rec || !rec.time) return;
+      var md = rec.metadata || {};
+      if (String(md.data_origin || md.dataOrigin || '') !== INBODY_ORIGIN) return;
+      var at = Date.parse(String(rec.time)), v = Number(valueOf(rec));
+      if (isNaN(at) || !(v > 0)) return;
+      var date = hsSgtDate(String(rec.time));
+      var day = by[date] = by[date] || {};
+      if (!day[field] || at >= day[field].at) day[field] = { at: at, v: v };   // the day's last scan
+    });
+  }
+  take(body.weight, 'weight', function (r) { return r.kilograms; });
+  take(body.body_fat, 'bf', function (r) { return r.percentage; });
+  take(body.basal_metabolic_rate, 'bmr', function (r) { return r.watts; });
+  var dates = Object.keys(by);
+  if (!dates.length) return null;
+
+  var sh = mustGet(BASE), out = {};
+  dates.sort().forEach(function (date) {
+    var d = by[date], p = {};
+    if (d.weight) p.weightkg = Math.round(d.weight.v * 10) / 10;
+    if (d.bf) p.bodyfatpct = Math.round(d.bf.v * 10) / 10;
+    if (d.bmr) p.bmr = Math.round(d.bmr.v * KCAL_PER_DAY_PER_WATT);
+    // A scan starts its row only with a weight. Body fat or BMR arriving on
+    // their own - switched on later, or synced separately - fill in a row that
+    // already exists rather than creating a half-scan.
+    if (!p.weightkg && !findRow(sh, date)) return;
+    var res = upsert(sh, BASE_MAP, 7, date, p);
+    if (res.created) sh.getRange(res.row, 7).setValue('from the InBody app');
+    out[date] = p;
+  });
+  sortByDate(sh);
+  return Object.keys(out).length ? out : null;
 }
 
 function hsBodySheet() {

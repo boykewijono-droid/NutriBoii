@@ -93,6 +93,32 @@ console.log('\n=== the cache stamp matches the assets it names ===');
   });
 }
 
+
+/* ---- no live credentials in the repo ----------------------------------
+ * The repo is public. The Web App URL and the API token belong in the
+ * private Claude Chat project only. In September a live token was committed
+ * and had to be rotated; in October a live URL and token turned up again in
+ * the working copy of the Chat instructions, one commit away from going out.
+ * This fails the suite if any tracked or about-to-be-tracked file holds one.
+ */
+console.log('\n=== no live URL or token in any repo file ===');
+{
+  const { execSync } = require('child_process');
+  const root = path.join(__dirname, '..');
+  const files = execSync('git ls-files --cached --others --exclude-standard', { cwd: root })
+    .toString().split('\n').filter(f => f && !/node_modules|\.(png|jpg|ico|webp|woff2?)$/i.test(f));
+  const LIVE_URL = /script\.google\.com\/macros\/s\/AKfyc[A-Za-z0-9_-]{20,}/;
+  const LIVE_TOKEN = /token=[0-9a-f]{20,}/i;
+  const hits = [];
+  files.forEach(f => {
+    let txt;
+    try { txt = fs.readFileSync(path.join(root, f), 'utf8'); } catch (e) { return; }
+    if (LIVE_URL.test(txt)) hits.push(f + ' (Web App URL)');
+    if (LIVE_TOKEN.test(txt)) hits.push(f + ' (token)');
+  });
+  eq('checked ' + files.length + ' files; none holds a live URL or token', hits, []);
+}
+
 console.log('\n' + '='.repeat(46));
 console.log('  ' + pass + ' passed, ' + fail + ' failed');
 console.log('='.repeat(46));

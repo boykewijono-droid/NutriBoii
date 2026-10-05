@@ -641,6 +641,99 @@ console.log('\n=== an InBody scan is not a daily weigh-in ===');
   eq('the real scale reading is kept, the scan ignored', [row2[1], row2[7]], [76.2, ZEPP]);
 }
 
+
+console.log('\n=== an InBody scan writes its own Baselines row ===');
+{
+  // The InBody app's own Health Connect records: weight, body fat, and BMR as
+  // a power. 1,700 kcal/day is 1700 x 4184 / 86400 = 82.32 W.
+  const INBODY = 'com.inbody2014.inbody';
+  const W1700 = 1700 * 4184 / 86400;
+  const base = w => w.sheets['Baselines']._grid.slice(1).filter(x => x[0]);
+  const w = world();
+  const r = call(w, payload({
+    weight: [{ kilograms: 75.43, time: at(TODAY, 18.7), metadata: md(INBODY) }],
+    body_fat: [{ percentage: 19.86, time: at(TODAY, 18.7), metadata: md(INBODY) }],
+    basal_metabolic_rate: [{ watts: W1700, time: at(TODAY, 18.7), metadata: md(INBODY) }],
+  }));
+  const b = base(w).find(x => String(x[0]).slice(0, 10) === TODAY);
+  eq('a Baselines row for today appears', !!b, true);
+  eq('weight and body fat, to one decimal like the rest of the tab', [b[1], b[2]], [75.4, 19.9]);
+  eq('BMR converted from watts back to kcal a day', b[5], 1700);
+  eq('fat mass left for the dashboard to derive', b[3], '');
+  eq('skeletal muscle left alone: Health Connect cannot carry it', b[4], '');
+  eq('and it says where it came from', b[6], 'from the InBody app');
+  eq('the reply reports the scan', r.scan && r.scan[TODAY] && r.scan[TODAY].bmr, 1700);
+  eq('it is still not a daily weigh-in: no Body Log', !!w.sheets['Body Log'], false);
+}
+
+console.log('\n=== a scan never blanks what Chat already wrote ===');
+{
+  // 11 Sept is in Baselines with skeletal muscle 34.3 and fat mass 15.6, typed
+  // in by Chat. The InBody app's copy of the same scan must leave those alone.
+  const INBODY = 'com.inbody2014.inbody';
+  const w = world();
+  call(w, payload({
+    weight: [{ kilograms: 75.9, time: at('2026-09-11', 18.73), metadata: md(INBODY) }],
+    body_fat: [{ percentage: 20.6, time: at('2026-09-11', 18.73), metadata: md(INBODY) }],
+  }));
+  const rows = w.sheets['Baselines']._grid.slice(1).filter(x => String(x[0]).slice(0, 10) === '2026-09-11');
+  eq('still one row for that date', rows.length, 1);
+  eq('skeletal muscle 34.3 and fat mass 15.6 kept', [rows[0][4], rows[0][3]], [34.3, 15.6]);
+  eq('and its BMR untouched, since none arrived', rows[0][5], 1672);
+  eq('no "from the InBody app" note stamped on Chat\'s row', rows[0][6], '');
+}
+
+console.log('\n=== BMR arriving on its own fills a scan, never starts one ===');
+{
+  const INBODY = 'com.inbody2014.inbody';
+  const W = k => k * 4184 / 86400;
+  const w = world();
+  call(w, payload({ basal_metabolic_rate: [{ watts: W(1690), time: at(YEST, 18), metadata: md(INBODY) }] }));
+  eq('a lone BMR with no scan that day creates nothing',
+     w.sheets['Baselines']._grid.slice(1).some(x => String(x[0]).slice(0, 10) === YEST), false);
+  // ...but switched on after the scan synced, it completes the existing row
+  call(w, payload({ basal_metabolic_rate: [{ watts: W(1685), time: at('2026-09-11', 18.73), metadata: md(INBODY) }] }));
+  const row = w.sheets['Baselines']._grid.slice(1).find(x => String(x[0]).slice(0, 10) === '2026-09-11');
+  eq('it completes an existing scan\'s BMR', row[5], 1685);
+}
+
+console.log('\n=== the next new day takes the new scan\'s BMR ===');
+{
+  const INBODY = 'com.inbody2014.inbody';
+  const w = world();
+  call(w, payload({
+    weight: [{ kilograms: 75.0, time: at(YEST, 18), metadata: md(INBODY) }],
+    basal_metabolic_rate: [{ watts: 1700 * 4184 / 86400, time: at(YEST, 18), metadata: md(INBODY) }],
+    steps: [stepsDay(TODAY, 9, 1500)],
+  }));
+  eq('today\'s new row inherits 1,700, not the old 1,672', row(w, TODAY).BMR, 1700);
+}
+
+console.log('\n=== a scan without BMR does not break the burn ===');
+{
+  // If the InBody app turns out not to write BMR, the newest scan has none:
+  // a new day must fall back to the last scan that did, not go blank.
+  const INBODY = 'com.inbody2014.inbody';
+  const w = world();
+  call(w, payload({
+    weight: [{ kilograms: 75.0, time: at(YEST, 18), metadata: md(INBODY) }],
+    body_fat: [{ percentage: 20.1, time: at(YEST, 18), metadata: md(INBODY) }],
+    steps: [stepsDay(TODAY, 9, 1500)],
+  }));
+  eq('the scan row exists, with no BMR', (w.sheets['Baselines']._grid.slice(1).find(x => String(x[0]).slice(0, 10) === YEST) || [])[5], '');
+  eq('today falls back to the last real BMR, 1,672', row(w, TODAY).BMR, 1672);
+  eq('so the burn is still computed', typeof row(w, TODAY).TDEE, 'number');
+}
+
+console.log('\n=== the same weight through Google Fit is not a scan ===');
+{
+  const FIT = 'com.google.android.apps.fitness';
+  const w = world();
+  call(w, payload({ weight: [{ kilograms: 75.9, time: at(TODAY, 8), metadata: md(FIT) }] }));
+  eq('Baselines untouched: only the InBody app\'s own records count',
+     w.sheets['Baselines']._grid.slice(1).filter(x => x[0]).length, 1);
+}
+
 console.log('\n=== a scale reading does not disturb the daily log ===');
 {
   const w = world();

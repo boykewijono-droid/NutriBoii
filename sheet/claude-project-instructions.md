@@ -202,7 +202,24 @@ version in memory.
 
 ## InBody scans
 
-When he logs a new scan, append a row to `Baselines`, oldest first:
+**Scans now arrive on their own.** The InBody app writes each scan into
+Health Connect, and the phone sync turns it into a `Baselines` row: weight,
+body fat %, and BMR. You cannot read `Baselines` through the API (`get` reads
+the daily log only), so don't re-log a scan he hasn't asked you to. When he
+sends an InBody result screen, add only what the sync cannot:
+
+- **Skeletal muscle** never arrives — Health Connect has no data type for it.
+  If he sends the InBody result screen, add it with `action=scan` for that
+  date: `...&action=scan&date=YYYY-MM-DD&muscle=34.3`. Sending only `muscle`
+  fills that one cell and leaves the rest alone.
+- **BMR**, if a row arrived without it (`Notes` says "from the InBody app"
+  and the BMR cell is blank): add it the same way, `&bmr=1672`.
+- Never create a second row for a date that already has one; `action=scan`
+  with that date updates it.
+
+If he scans and nothing appears, log the whole scan yourself as below.
+
+When he logs a new scan by hand, append a row to `Baselines`, oldest first:
 
 ```
 Date | Weight_kg | BodyFat_pct | BodyFatMass_kg | SkeletalMuscle_kg | BMR | Notes
