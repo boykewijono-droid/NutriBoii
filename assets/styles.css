@@ -125,18 +125,18 @@ svg{display:block}
 
 .nav{display:flex;flex-direction:column}
 .nav button{
-  display:flex;align-items:baseline;gap:10px;
-  padding:9px 24px;text-align:left;color:var(--ink-45);
-  font-size:13px;position:relative;transition:color .18s var(--ease);
+  display:flex;align-items:center;gap:12px;
+  padding:10px 24px;text-align:left;color:var(--ink-45);
+  font-size:14px;position:relative;transition:color .18s var(--ease);
 }
-.nav button i{font-style:normal;font-size:10px;color:var(--ink-dim);width:12px}
+.nav-ic{flex:0 0 auto}
 .nav button:hover{color:var(--ink-70)}
 .nav button[aria-current="true"]{color:var(--ink);font-weight:500}
 .nav button[aria-current="true"]::before{
   content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
-  width:3px;height:15px;background:var(--ink);
+  width:3px;height:18px;background:var(--ink);
 }
-.nav button[aria-current="true"] i{color:var(--good)}
+.nav button[aria-current="true"] .nav-ic{color:var(--good)}
 
 .rail-foot{margin-top:auto;padding:0 24px;font-size:10.5px;color:var(--ink-dim);line-height:1.5}
 .rail-foot button{text-decoration:underline;text-underline-offset:2px;color:var(--ink-45);font-size:10.5px}
@@ -506,10 +506,13 @@ td b{font-weight:500}
     background:var(--slab-bg);padding-bottom:env(safe-area-inset-bottom,0);
   }
   .tabbar button{
-    padding:13px 4px 14px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:10px 4px 11px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
     color:var(--tab-fg);position:relative;
   }
-  .tabbar button[aria-current="true"]{color:var(--slab-fg)}
+  .tabbar .nav-ic{width:24px;height:24px}
+  .tabbar button[aria-current="true"]{color:var(--slab-fg);font-weight:500}
+  .tabbar button[aria-current="true"] .nav-ic{color:var(--accent)}
   .tabbar button[aria-current="true"]::before{
     content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:22px;height:2px;background:var(--accent);
   }

@@ -1060,21 +1060,32 @@ function dayTip(d) {
    5. Views
    ====================================================================== */
 
+/* Each tab carries a line icon over (phone) or beside (desktop) its name, so
+   it reads at a glance: a sun for the day, a calendar for the week, a rising
+   line for trends, a clock turning back for history. Stroked in currentColor,
+   so they take the tab's own colour and the theme's. */
 var VIEWS = [
-  { id: 'today',   n: 'Today',   i: '01' },
-  { id: 'week',    n: 'Week',    i: '02' },
-  { id: 'trends',  n: 'Trends',  i: '03' },
-  { id: 'history', n: 'History', i: '04' }
+  { id: 'today',   n: 'Today',
+    svg: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>' },
+  { id: 'week',    n: 'Week',
+    svg: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h2M11 14h2M14.5 14h2M7.5 17h2M11 17h2"/>' },
+  { id: 'trends',  n: 'Trends',
+    svg: '<path d="M3 17.5l5.5-5.5 4 4L21 7.5"/><path d="M15 7.5h6v6"/>' },
+  { id: 'history', n: 'History',
+    svg: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>' }
 ];
 var current = 'today';
 
+function navIcon(v) {
+  return '<svg class="nav-ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"' +
+         ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + v.svg + '</svg>';
+}
 function buildNav() {
-  $('#navRail').innerHTML = VIEWS.map(function (v) {
-    return '<button type="button" data-view="' + v.id + '"><i>' + v.i + '</i>' + v.n + '</button>';
-  }).join('');
-  $('#navTabs').innerHTML = VIEWS.map(function (v) {
-    return '<button type="button" data-view="' + v.id + '">' + v.n + '</button>';
-  }).join('');
+  var item = function (v) {
+    return '<button type="button" data-view="' + v.id + '">' + navIcon(v) + '<span>' + v.n + '</span></button>';
+  };
+  $('#navRail').innerHTML = VIEWS.map(item).join('');
+  $('#navTabs').innerHTML = VIEWS.map(item).join('');
   markNav();
 }
 function markNav() {

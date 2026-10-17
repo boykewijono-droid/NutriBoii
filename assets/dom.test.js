@@ -454,6 +454,25 @@ console.log('\n=== no forecast yet: claims nothing ===');
   app.w.close();
 }
 
+console.log('\n=== every tab has an icon and its name, on the phone and the desktop ===');
+{
+  const app = await boot({ daily: daily([{ date: TODAY, cal: 600, bmr: 1709 }]) });
+  for (const bar of ['#navTabs', '#navRail']) {
+    const tabs = [...app.d.querySelectorAll(bar + ' button')];
+    eq(bar + ': four tabs, each named', tabs.map(b => T(b)), ['Today', 'Week', 'Trends', 'History']);
+    eq(bar + ': each with a drawn icon, hidden from screen readers',
+       tabs.map(b => { const s = b.querySelector('svg.nav-ic');
+                       return !!s && s.getAttribute('aria-hidden') === 'true' && s.children.length > 0; }),
+       [true, true, true, true]);
+  }
+  click(app, '#navTabs [data-view="week"]');
+  eq('tapping a tab still switches view, and marks it',
+     [app.d.querySelector('#view-week').classList.contains('on'),
+      app.d.querySelector('#navTabs [data-view="week"]').getAttribute('aria-current')], [true, 'true']);
+  eq('no script errors', app.errors, []);
+  app.w.close();
+}
+
 console.log('\n=== a scan this morning is today\'s BMR, though the row says otherwise ===');
 {
   // 17 Oct 2026: the row was made before the scan, with the last scan's 1,709;
