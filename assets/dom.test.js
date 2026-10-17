@@ -454,6 +454,21 @@ console.log('\n=== no forecast yet: claims nothing ===');
   app.w.close();
 }
 
+console.log('\n=== a scan this morning is today\'s BMR, though the row says otherwise ===');
+{
+  // 17 Oct 2026: the row was made before the scan, with the last scan's 1,709;
+  // the scan that morning read 1,685 and Today kept showing 1,709.
+  // BMR so far: 1685 x 840/1440 = 982.9 -> 983.
+  const base = BASE + '\n' + TODAY + ',75.4,19.2,,,1685,from the InBody app';
+  const app = await boot({ daily: daily([{ date: TODAY, cal: 600, bmr: 1709 }]), base });
+  const h = hero(app);
+  eq('the BMR mark is the new scan\'s', h.ticks.map(k => k.text), ['EATEN600', 'BMR1,685']);
+  eq('and so is everything built on it', h.panel, ['eaten = 600', 'burned so far = 983',
+     'BMR floor = 1,685', 'forecast burn = needs 3 days', 'plan = —']);
+  eq('no script errors', app.errors, []);
+  app.w.close();
+}
+
 console.log('\n=== the diary check stays quiet when it cannot be sure ===');
 {
   const quiet = async notes => {

@@ -447,9 +447,14 @@ function isMorningStamp(v) {
 }
 
 function buildDays(rows, scans, targets, today, scale) {
-  var latestBMR = null;
-  for (var i = scans.length - 1; i >= 0; i--) { if (scans[i].bmr != null) { latestBMR = scans[i].bmr; break; } }
-  if (latestBMR == null) latestBMR = targets.bmr_fallback || null;
+  // The BMR a date had: the latest scan on or before it, the oldest for a day
+  // before every scan. The same rule as scanBmrOn() in sheet/api.gs.
+  var bmrScans = scans.filter(function (s) { return s.bmr != null; });
+  var scanBmrOn = function (date) {
+    var best = null;
+    for (var k = 0; k < bmrScans.length; k++) if (bmrScans[k].date <= date) best = bmrScans[k].bmr;
+    return best != null ? best : (bmrScans.length ? bmrScans[0].bmr : null);
+  };
 
   // Each day's steps are priced at that day's body weight: the latest clean
   // morning weigh-in on or before it, else the newest InBody weight, else 75.
@@ -479,7 +484,12 @@ function buildDays(rows, scans, targets, today, scale) {
       bmr: num(r.bmr), gym: str(r.gymday || r.gym_day), notes: str(r.notes),
       logged: true
     };
-    if (d.bmr == null) d.bmr = latestBMR;
+    if (d.bmr == null) d.bmr = scanBmrOn(date);
+    // Today follows the scans until midnight, so a scan this morning counts
+    // today even though the row was made before it; a finished day keeps the
+    // BMR it was given. As writeDerived() in sheet/api.gs does.
+    if (date === today && bmrScans.length) d.bmr = scanBmrOn(date);
+    if (d.bmr == null) d.bmr = targets.bmr_fallback || null;
 
     // TDEE and Deficit are RECOMPUTED from source whenever the inputs exist,
     // and the Sheet's own columns are only a fallback. The API writes those

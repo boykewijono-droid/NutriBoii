@@ -228,10 +228,12 @@ function logDay(p) {
 
     var res = upsert(sh, DAILY_MAP, DAILY_COLS_N, date, p);
 
-    // A brand-new row with no BMR given inherits the newest scan's BMR, so the
-    // day's TDEE is frozen against the body composition that was current.
+    // A brand-new row with no BMR given inherits the BMR of the latest scan on
+    // or before ITS date, so a backfilled August day never gets a September
+    // scan. Today's row keeps following the scans until midnight: see
+    // writeDerived().
     if (res.created && (p.bmr == null || p.bmr === '')) {
-      var bmr = latestScanBmr();
+      var bmr = scanBmrOn(date);
       if (bmr != null) sh.getRange(res.row, 10).setValue(bmr);
     }
 
@@ -460,6 +462,9 @@ function addScan(p) {
     var date = resolveDate(p.date);
     var res = upsert(sh, BASE_MAP, 7, date, p);
     sortByDate(sh);
+    // A scan logged by hand moves today's BMR straight away, as a synced one does.
+    var dsh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(DAILY);
+    if (dsh) { ensureDailyHeaders(dsh); writeDerived(dsh, findRow(dsh, todaySGT())); }
     var row = readRow(sh, BASE_MAP, 7, date);
     return {
       ok: true, action: 'scan', date: date,
@@ -648,12 +653,15 @@ function hsSync(e) {
       if (!Object.keys(p).length) return;
       var res = upsert(sh, DAILY_MAP, DAILY_COLS_N, date, p);
       if (res.created) {
-        var bmr = latestScanBmr();
+        var bmr = scanBmrOn(date);
         if (bmr != null) sh.getRange(res.row, 10).setValue(bmr);
       }
       writeDerived(sh, findRow(sh, date));
       days[date] = t;
     });
+    // A scan in this payload moves today's BMR even when nothing else about
+    // today arrived with it.
+    if (scan) writeDerived(sh, findRow(sh, todaySGT()));
     sortByDate(sh);
 
     // Keep the raw tab small. Anything older than a few days has already been
@@ -765,7 +773,8 @@ function hsBody(body) {
  * Health Connect: weight, body fat %, and BMR - the last as a POWER, in
  * watts, which is how Health Connect stores a metabolic rate. Those become the
  * scan's row in Baselines, so a scan reaches the plan without anyone typing it,
- * and the next new day row picks up its BMR.
+ * and its BMR applies from its own date: today's row takes it at once, and
+ * days already over keep the BMR they had.
  *
  * What it cannot carry: skeletal muscle has no Health Connect type at all, so
  * no app can send it. It is never written here and never blanked - a value
@@ -1198,12 +1207,27 @@ function upsert(sh, map, nCols, date, p) {
 }
 
 /** Compute TDEE and Deficit into columns 11 and 12 for this row.
- *  Cleared rather than left stale when the inputs are not there. */
+ *  Cleared rather than left stale when the inputs are not there.
+ *
+ *  Today's BMR follows the scans until midnight. A row is usually created
+ *  just after midnight by the first sync, so a scan that morning would
+ *  otherwise miss its own day (17 Oct 2026 kept 1,709 after a 1,685 scan),
+ *  and a stale BMR sent with a meal would stand. Once the day is over its BMR
+ *  is frozen: a later scan never rewrites a finished day. Same rule as
+ *  buildDays() in assets/app.js. */
 function writeDerived(sh, row) {
   if (!row) return;
   var v = sh.getRange(row, 1, 1, DAILY_COLS_N).getValues()[0];
   var cal = v[2], bmr = v[9];
   var haveNum = function (x) { return x !== '' && x != null && !isNaN(x); };
+  var date = cellDate(v[0]);
+  if (date && date === todaySGT()) {
+    var scanned = scanBmrOn(date);
+    if (haveNum(scanned) && Number(scanned) !== Number(bmr)) {
+      sh.getRange(row, 10).setValue(scanned);
+      bmr = scanned;
+    }
+  }
   if (!haveNum(bmr)) { sh.getRange(row, 11, 1, 2).setValue(''); return; }
   var a = dayActivity(Number(bmr), numOrNull(v[6]), numOrNull(v[8]), numOrNull(v[14]),
                       numOrNull(v[15]), stepWeight(cellDate(v[0])));
@@ -1386,17 +1410,22 @@ function canonDayType(v) {
   return null;
 }
 
-function latestScanBmr() {
+/** The BMR a date had: from the latest scan on or before it, never a later
+ *  one (the newest scan overall gave late-August days September's BMR). A
+ *  date older than every scan takes the oldest. No scan with a BMR: null. */
+function scanBmrOn(date) {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BASE);
   if (!sh || sh.getLastRow() < 2) return null;
   var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 6).getValues();
-  var best = null, bestDate = '';
+  var best = null, bestDate = '', first = null, firstDate = '';
   for (var i = 0; i < vals.length; i++) {
     var d = cellDate(vals[i][0]);
     var b = vals[i][5];
-    if (d && b !== '' && b != null && d >= bestDate) { bestDate = d; best = b; }
+    if (!d || b === '' || b == null || isNaN(b)) continue;
+    if (d <= date && d >= bestDate) { bestDate = d; best = b; }
+    if (!firstDate || d < firstDate) { firstDate = d; first = b; }
   }
-  return best;
+  return best != null ? best : first;
 }
 
 /** Recompute TDEE and deficit for the reply, with the same arithmetic that

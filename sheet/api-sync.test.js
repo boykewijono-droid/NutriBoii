@@ -709,6 +709,24 @@ console.log('\n=== the next new day takes the new scan\'s BMR ===');
   eq('today\'s new row inherits 1,700, not the old 1,672', row(w, TODAY).BMR, 1700);
 }
 
+console.log('\n=== a scan this morning moves the row that already exists for today ===');
+{
+  // 17 Oct 2026: the first sync after midnight made today's row on the old
+  // BMR; the 10am scan then arrived in a payload of its own, with no steps,
+  // and the row kept the old BMR all day.
+  const INBODY = 'com.inbody2014.inbody';
+  const w = world();
+  call(w, payload({ steps: [stepsDay(YEST, 20, 9000), stepsDay(TODAY, 1, 300)] }));
+  eq('the row starts on the old scan, 1,672', row(w, TODAY).BMR, 1672);
+  call(w, payload({
+    weight: [{ kilograms: 75.4, time: at(TODAY, 10), metadata: md(INBODY) }],
+    basal_metabolic_rate: [{ watts: 1685 * 4184 / 86400, time: at(TODAY, 10), metadata: md(INBODY) }],
+  }));
+  eq('the scan alone moves today\'s BMR to 1,685', row(w, TODAY).BMR, 1685);
+  eq('and today\'s burn with it', row(w, TODAY).TDEE > 1685 && row(w, TODAY).TDEE < 1672 + 50, true);
+  eq('yesterday, already over, keeps 1,672', row(w, YEST).BMR, 1672);
+}
+
 console.log('\n=== a scan without BMR does not break the burn ===');
 {
   // If the InBody app turns out not to write BMR, the newest scan has none:

@@ -78,9 +78,12 @@ longer used.
    they are taken out. When you explain his burn, use this — never Samsung's
    own "total burned", which NutriBoii cannot see and does not use.
 
-5. **`BMR`** — copy the value from the newest row of the `Baselines` tab. Do
-   not hardcode it: it changes with each InBody scan. Freezing it per row is
-   deliberate, so that a new scan does not retroactively rewrite old days.
+5. **`BMR`** — **never send it.** You can't read `Baselines`, so any number
+   you have is from memory and may be stale (16 Oct 2026 was written as 1,672
+   when the scans said 1,709). The API fills it: each day gets the BMR of the
+   latest InBody scan on or before it, and today's row follows a scan taken
+   today. A finished day keeps the BMR it had, so a new scan never rewrites
+   old days.
 
 6. **`GymDay`** — usually fills itself. The phone sync marks it `Yes` when
    Samsung Health records a strength session; a walk or a run does not count.
@@ -228,7 +231,8 @@ Date | Weight_kg | BodyFat_pct | BodyFatMass_kg | SkeletalMuscle_kg | BMR | Note
 `BodyFatMass_kg` may be left blank — the dashboard derives it from weight x
 body fat %. Two or more scans unlock the "weeks to 15%" projection, which is
 the dashboard's headline number, so this tab matters more than its size
-suggests. After adding a scan, use its `BMR` for subsequent daily rows.
+suggests. Its `BMR` then applies from the scan's date on its own; don't copy
+it into daily rows.
 
 ## Writing to the sheet — use the API, never a pasted row
 
@@ -243,9 +247,10 @@ Boii will give you the URL and token. Keep them out of your visible replies
 except inside the link itself.
 
 **Fields are named, never positional.** Any of:
-`date` `dayType` `calories` `protein` `fat` `carbs` `bmr` `gymDay` `notes`
+`date` `dayType` `calories` `protein` `fat` `carbs` `gymDay` `notes`
 (and `steps` `exerciseCal` `exerciseMin` `workoutSteps`, which the phone sync
-owns — leave them to it). URL-encode the values.
+owns — leave them to it, and `bmr`, which the API fills from the scans).
+URL-encode the values.
 
 ### Logging a meal: ADD, never overwrite
 

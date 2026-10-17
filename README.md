@@ -51,7 +51,7 @@ One row in `Daily Log`, columns in this order:
 | `Steps` | `8872` | Samsung Health, synced hourly ([SYNC.md](SYNC.md)) |
 | `ActiveCal` | | no longer written or used — Samsung never shares it |
 | `ExerciseCal` | `547` | Samsung Health workout calories, as it reports them |
-| `BMR` | `1672` | optional — blank uses the newest `Baselines` row |
+| `BMR` | `1672` | filled by the API: the latest `Baselines` scan on or before the date. Today's follows a scan taken today; a finished day keeps its own |
 | `TDEE` | | burned; written by the API, recomputed by the dashboard (was `TDEE_Target`) |
 | `Deficit` | | optional — blank and the dashboard computes it |
 | `GymDay` | `Yes` | `Yes` or `No` (or a split like `Day 3`) |

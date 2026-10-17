@@ -144,8 +144,8 @@ for the dashboard to work out from weight × body fat.
 
 A scan arriving without a weight never starts a row (BMR switched on later just
 completes the existing one), and a scan never blanks anything Claude Chat
-already wrote. The next new day picks up the new BMR; days already logged keep
-the BMR they had.
+already wrote. The new BMR applies from the scan's own date: today's row takes
+it as soon as the scan syncs, and days already over keep the BMR they had.
 
 To seed some history the first time: **Manual Sync → Past 30 Days → Sync Now**.
 

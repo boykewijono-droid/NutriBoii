@@ -297,6 +297,59 @@ console.log('\n=== BMR inherited from the newest scan ===');
   })());
 }
 
+console.log('\n=== BMR is the scan on or before the DAY, not the newest scan ===');
+{
+  // His real Baselines: 24 Aug read 1,674 and 11 Sep 1,672. A late-August
+  // row created after 11 Sep used to get 1,672, the scan from its future.
+  const { sheets, store } = setup();
+  call(sheets, store, { token: 'TESTTOKEN', action: 'scan', format: 'json',
+                        date: '2026-08-24', weight: '76.3', bodyFat: '20.8', bmr: '1674' });
+  call(sheets, store, { token: 'TESTTOKEN', action: 'scan', format: 'json',
+                        date: '2026-09-11', weight: '75.9', bodyFat: '20.6', bmr: '1672' });
+  const aug = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                                           date: '2026-08-26', calories: '1800' }));
+  ok('26 Aug takes the 24 Aug scan (1674), not 11 Sep\'s', aug.row.BMR === 1674, 'BMR=' + aug.row.BMR);
+  const on = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                                          date: '2026-09-11', calories: '1800' }));
+  ok('a scan applies on its own date (11 Sep -> 1672)', on.row.BMR === 1672, 'BMR=' + on.row.BMR);
+  const before = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                                              date: '2026-08-01', calories: '1800' }));
+  ok('a day before every scan takes the oldest (1674)', before.row.BMR === 1674, 'BMR=' + before.row.BMR);
+}
+
+console.log('\n=== today follows a scan taken today; finished days do not ===');
+{
+  // 17 Oct 2026: the row was made at breakfast with the 5 Oct BMR (1,709),
+  // the scan landed after 10am at 1,685, and the row kept 1,709.
+  const { sheets, store } = setup();
+  const yday = (() => { const d = new Date(today + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 1);
+                        return d.toISOString().slice(0, 10); })();
+  const old = '2026-01-05';
+  call(sheets, store, { token: 'TESTTOKEN', action: 'scan', format: 'json',
+                        date: old, weight: '76.3', bodyFat: '18.7', bmr: '1709' });
+  call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                        date: yday, calories: '1900' });
+  const am = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                                          date: 'today', addCalories: '90' }));
+  ok('breakfast row starts on the last scan (1709)', am.row.BMR === 1709, 'BMR=' + am.row.BMR);
+
+  call(sheets, store, { token: 'TESTTOKEN', action: 'scan', format: 'json',
+                        date: today, weight: '75.4', bodyFat: '19.2', bmr: '1685' });
+  const n = {}; DAILY_HDR.forEach((h, i) => n[h] = rowOf(sheets, 'Daily Log', today)[i]);
+  ok('the scan moves today\'s BMR at once (1685)', n.BMR === 1685, 'BMR=' + n.BMR);
+  ok('and today\'s TDEE and deficit with it', n.TDEE === 1685 && n.Deficit === 1685 - 90,
+     'TDEE=' + n.TDEE + ' Deficit=' + n.Deficit);
+  const y = {}; DAILY_HDR.forEach((h, i) => y[h] = rowOf(sheets, 'Daily Log', yday)[i]);
+  ok('yesterday keeps the BMR it had (1709)', y.BMR === 1709, 'BMR=' + y.BMR);
+
+  // 16 Oct: Chat sent bmr=1672 from memory with a meal. On today's row the
+  // scans win; a stale number cannot stand.
+  const stale = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                                             date: 'today', addCalories: '200', bmr: '1672' }));
+  ok('a stale BMR sent for today is replaced by the scan', stale.row.BMR === 1685, 'BMR=' + stale.row.BMR);
+  ok('and the reply\'s burn uses it', /burn 1685/.test(stale.summary), stale.summary);
+}
+
 console.log('\n=== a day logged WITH workout minutes uses the new burn ===');
 {
   // Chat can send exerciseMin and workoutSteps too; then the burn is
