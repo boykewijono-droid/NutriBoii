@@ -64,8 +64,11 @@ The URL and token stay the same.
 ### 2. Samsung Health → Health Connect
 
 Samsung Health → **⋮ → Settings → Health Connect**. Turn syncing on and
-allow Samsung Health to share **Steps**, **Exercise**, **Active calories
-burned** and **Total calories burned**.
+allow Samsung Health to share **Steps**, **Exercise** and **Total calories
+burned**. Samsung writes each workout's calories as a total-calorie record
+spanning the session, and that is where `ExerciseCal` comes from, so Total
+calories burned can't be left off. Active calories burned isn't needed:
+Samsung never writes any.
 
 Menu names shift a little between One UI versions. If you can't find it: phone
 **Settings** → search **Health Connect** → **App permissions** → **Samsung
@@ -209,9 +212,10 @@ Samsung phones kill background apps aggressively, and a sleeping app doesn't syn
 
 The first sync looks back 48 hours. Within a few seconds:
 
-- **Daily Log** +y before that is
-  skipped on purpose: the 48-hour window starts part-way through it, so its
-  count would be short.
+- **Daily Log** has **Steps** for today and yesterday, and on workout days
+  **ExerciseCal**, **ExerciseMin** and **WorkoutSteps** too. The day before
+  that is skipped on purpose: the 48-hour window starts part-way through it,
+  so its count would be short.
 - a hidden tab called **Activity Sync** appears (Sheet → View → Hidden sheets).
   It's the raw record store and trims itself to the last week.
 - the dashboard shows the steps with **"so far today"** under them.
@@ -229,7 +233,7 @@ The app's **Logs** screen shows each post it made.
 ## How the numbers behave
 
 - **Samsung Health is the step count.** Several apps write steps into Health
-  Connect — Android'''s own counter and Health Sync both do on this phone. For
+  Connect — Android's own counter and Health Sync both do on this phone. For
   each day and each measure NutriBoii takes ONE source, never the sum, and
   Samsung Health wins outright whenever it has anything for that day, so the
   sheet matches what your phone shows. Another app only stands in when Samsung
@@ -259,20 +263,15 @@ The app's **Logs** screen shows each post it made.
 | How often the phone posts | Webhook app → Sync Schedule → Interval | 60 min |
 | How often an open dashboard re-reads the Sheet | `autoRefreshMinutes` in [assets/config.js](assets/config.js) | 10 min |
 
-## What's checked, and what only a real sync will show
-
-Checked:
+## What's checked
 
 - the payload format, against the webhook app's source code, not just its README
 - the POST reaching the live API and getting a proper JSON reply after Google's
   redirect, the same way the app sends it
 - everything above, in `node sheet/api-sync.test.js`
-
-Only a real sync will show:
-
-1. whether Samsung Health writes each workout's calories as a total-calorie
-   record, which is how ExerciseCal is filled
-2. whether your phone shares active calories at all
+- on real syncs: Samsung Health writes each workout's calories as one
+  total-calorie record spanning the session, which is how ExerciseCal fills,
+  and it writes no active calories at all
 
 If something looks off after a sync, open the **Activity Sync** tab and send me
 a few rows.

@@ -127,7 +127,7 @@ it counts up on paint, because it is the number the whole thing exists to
 move. It becomes the final deficit when Claude closes the day. Then the 7-day rolling average deficit and the countdown to 15% body
 fat side by side, then macros, then activity.
 
-**Activity** shows steps, active and exercise calories, and an **activity
+**Activity** shows steps, workout minutes and exercise calories, and an **activity
 level** worked out from them rather than asked for: **High** for a workout or
 a logged gym day, **Medium** for a day out and about, **Low** for a desk day
 at home. Thresholds are in `activityLevels` in `assets/config.js`. A day with
