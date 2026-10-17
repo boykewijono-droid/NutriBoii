@@ -495,7 +495,7 @@ td b{font-weight:500}
 .tabbar{display:none}
 @media (max-width:899px){
   .rail{display:none}
-  main{padding-bottom:82px}
+  main{padding-bottom:104px}   /* clears the tab bar, two-line "Health Report" included */
   .topbar{padding-top:22px;margin-bottom:24px}
   .g3,.g4{grid-template-columns:repeat(2,1fr)}
   .sheet{top:auto;width:100%;border-top:1px solid var(--line);max-height:88vh;transform:translateY(100%)}
@@ -508,7 +508,7 @@ td b{font-weight:500}
   .tabbar button{
     display:flex;flex-direction:column;align-items:center;gap:5px;
     padding:10px 4px 11px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
-    color:var(--tab-fg);position:relative;
+    color:var(--tab-fg);position:relative;text-align:center;line-height:1.25;
   }
   .tabbar .nav-ic{width:24px;height:24px}
   .tabbar button[aria-current="true"]{color:var(--slab-fg);font-weight:500}
@@ -525,8 +525,15 @@ td b{font-weight:500}
   th:first-child,td:first-child{padding-left:12px}
   th:last-child,td:last-child{padding-right:12px}
   .opt{display:none}
+  .h-unit{display:none}
+  th{letter-spacing:.03em}
   .d-long{display:none}
   .d-short{display:inline}
+}
+/* The narrowest phones (360 px is common on Samsung): tighter cells, so the
+   scan table's BMR column still fits without sideways scrolling. */
+@media (max-width:380px){
+  th,td{padding-left:4px;padding-right:4px}
 }
 @media (max-width:460px){
   .g2,.g3,.g4{grid-template-columns:1fr}

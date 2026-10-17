@@ -1069,7 +1069,10 @@ var VIEWS = [
     svg: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>' },
   { id: 'week',    n: 'Week',
     svg: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h2M11 14h2M14.5 14h2M7.5 17h2M11 17h2"/>' },
-  { id: 'trends',  n: 'Trends',
+  // Shown as "Health Report": the scans, the pace to the goal, the burn's
+  // check against the scale and the intake history. The id stays 'trends'
+  // so a saved #trends link still lands here.
+  { id: 'trends',  n: 'Health Report',
     svg: '<path d="M3 17.5l5.5-5.5 4 4L21 7.5"/><path d="M15 7.5h6v6"/>' },
   { id: 'history', n: 'History',
     svg: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>' }
@@ -1851,13 +1854,22 @@ function renderTrends() {
       : M.scans.length + ' InBody scan' + (M.scans.length === 1 ? '' : 's') + ' · the one to plan against') +
     '</span></div>' : '';
 
+  // The InBody measures BMR, the number every day's burn is built on, so it
+  // gets a cell of its own and the goal moves under body fat. The scale
+  // measures no BMR: that view keeps the goal in its own cell.
+  var inbody = bodySource === 'inbody';
+  var bmrScan = null;
+  for (var bi = M.scans.length - 1; bi >= 0; bi--) { if (M.scans[bi].bmr != null) { bmrScan = M.scans[bi]; break; } }
   h += '<div class="grid g4">' +
     // Every figure here is measured, not estimated, and it is worth saying
     // where and when: an InBody from a fortnight ago is not today's weight.
     cell('Weight', cur && cur.weight != null ? nf(cur.weight, 1) : null, 'kg', null, bodySourceLabel(cur)) +
-    cell('Body fat', cur && cur.bf != null ? nf(cur.bf, 1) : null, '%', null, bodySourceLabel(cur)) +
+    cell('Body fat', cur && cur.bf != null ? nf(cur.bf, 1) : null, '%', null,
+         inbody ? 'goal ' + goal + '% · ' + (bodySourceLabel(cur) || 'no scan yet') : bodySourceLabel(cur)) +
     cell('Fat mass', cur && cur.fatMass != null ? nf(cur.fatMass, 1) : null, 'kg', null, bodySourceLabel(cur)) +
-    cell('Goal', goal + '%', null, null, 'body fat') +
+    (inbody
+      ? cell('BMR', bmrScan ? nf(bmrScan.bmr) : null, 'kcal', null, bmrScan ? scanSource(bmrScan) : 'No scan with a BMR yet')
+      : cell('Goal', goal + '%', null, null, 'body fat')) +
   '</div>';
 
   h += '<div class="grid g2">' + projectionCell(p, t) + rollingCell(rollingDeficit(M.today, CFG.rollingWindowDays || 7)) + '</div>';
@@ -1989,7 +2001,7 @@ function renderTrends() {
   });
 }
 
-/** Which body-composition source the Trends view is showing. */
+/** Which body-composition source the Health Report view is showing. */
 var bodySource = 'inbody';
 
 /** Where a body figure came from, and when it was taken. */
@@ -2039,12 +2051,14 @@ function scanTable() {
       '<td>' + nf(s.bf, 1) + '</td>' +
       '<td>' + nf(s.fatMass, 1) + '</td>' +
       '<td>' + nf(s.muscle, 1) + '</td>' +
-      '<td class="opt">' + nf(s.bmr) + '</td>' +
+      '<td>' + nf(s.bmr) + '</td>' +
       '<td class="opt">' + (dw == null ? '<span class="dash">—</span>' : signed(dw, 1)) + '</td></tr>';
   }).join('');
   return '<div class="sec"><div class="sec-head"><h2>Scan history</h2><span class="lbl">InBody · Baselines tab</span></div>' +
-    '<div class="tw"><table><thead><tr><th>Date</th><th>Weight kg</th><th>Fat %</th><th>Fat kg</th>' +
-    '<th>Muscle kg</th><th class="opt">BMR</th><th class="opt">Δ weight</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    // A phone drops the units from the two widest headers so the BMR column
+    // fits beside the rest without the table scrolling sideways.
+    '<div class="tw"><table><thead><tr><th>Date</th><th>Weight<span class="h-unit"> kg</span></th><th>Fat %</th><th>Fat kg</th>' +
+    '<th>Muscle<span class="h-unit"> kg</span></th><th>BMR</th><th class="opt">Δ weight</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
 /* --- HISTORY ------------------------------------------------------------ */
@@ -2200,7 +2214,7 @@ function showSetup(reason) {
 function showError(e) {
   // A background refresh that fails (the phone briefly offline) keeps what is
   // on screen. Replacing it with a setup error, and jumping to Today, would
-  // punish a glance at Trends for a dropped connection.
+  // punish a glance at the Health Report for a dropped connection.
   if (lastLoad) {
     setSync('err', 'Couldn\'t refresh · data from ' + lastLoadTime + ' SGT', true);
     return;
@@ -2326,7 +2340,7 @@ buildNav();
 var startView = location.hash.slice(1) || 'today';
 if (!VIEWS.some(function (v) { return v.id === startView; })) startView = 'today';
 // Show the requested view straight away, so a link to #trends does not show
-// Today's loading placeholder under a nav that says Trends.
+// Today's loading placeholder under a nav that says Health Report.
 current = null;
 go(startView, true);
 load();

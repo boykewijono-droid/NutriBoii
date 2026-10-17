@@ -141,7 +141,7 @@ day, fat over 80 g).
 **Week** — intake against target and daily deficit for the last 7 calendar
 days, plus the day-by-day table.
 
-**Trends** — body fat %, weight and fat mass, with a toggle between **InBody**
+**Health Report** (it was Trends) — body fat %, weight, fat mass and the InBody's BMR (the 15% goal sits under body fat), with a toggle between **InBody**
 and the **daily scale** when a scale is syncing; intake and rolling deficit
 over 30 days; the scan history table. Every body figure says where it came
 from and when, because a fortnight-old scan is not today's weight.
@@ -328,7 +328,7 @@ pure functions (`assets/app.test.js`, which also guards the cache stamp and
 fails if a live Web App URL or token turns up in any file), and the dashboard
 itself (`assets/dom.test.js`): the real page booted on fixed data at a fixed
 clock, 14:00 on 5 Oct 2026, and read back as he would read it, from the Today
-card and the day sheet to the scale check on Trends. Every number those tests expect is
+card and the day sheet to the scale check on the Health Report. Every number those tests expect is
 worked out by hand in a comment beside it.
 
 ## Keeping it private

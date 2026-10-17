@@ -1,6 +1,6 @@
 /* The dashboard itself, booted in a fake browser on fixed data at a fixed
  * clock, and read back the way he reads it: the Today card, the day sheet,
- * Trends. Every expected number below is worked out by hand in the comments,
+ * Health Report. Every expected number below is worked out by hand in the comments,
  * not copied from the output.
  *
  *   npm install          (once: fetches jsdom)
@@ -357,7 +357,7 @@ console.log('\n=== the day sheet: every burn traced to its parts ===');
   app.w.close();
 }
 
-console.log('\n=== Trends: the InBody app\'s scan, and the scale check with too few weigh-ins ===');
+console.log('\n=== Health Report: the InBody app\'s scan, and the scale check with too few weigh-ins ===');
 {
   const app = await boot({ daily: daily(HISTORY.concat([todayRow(900)])), base: BASE, body: BODY });
   click(app, '[data-view="trends"]');
@@ -367,6 +367,21 @@ console.log('\n=== Trends: the InBody app\'s scan, and the scale check with too 
   eq('newest first: the app\'s scan, fat mass worked out, muscle blank',
      scans[0], ['4 Oct 2026', '76.3', '18.7', '14.3', '—', '1,709', '+0.4']);
   eq('Chat\'s 11 Sept scan keeps its muscle and fat mass', scans[1], ['11 Sept 2026', '75.9', '20.6', '15.6', '34.3', '1,672', '—']);
+  eq('the tab is titled Health Report', T(app.d.querySelector('#pageTitle')), 'Health Report');
+  // BMR was only a table column, and one phones hide. It is a cell now,
+  // from the newest scan that has one; the 15% goal moves under body fat.
+  const top = () => [...app.d.querySelectorAll('#view-trends .g4 .cell')].map(c =>
+    [T(c.querySelector('.lbl')), T(c.querySelector('.big')), T(c.querySelector('.sub'))]);
+  eq('InBody cells: weight, body fat with the goal, fat mass, BMR', top(), [
+    ['Weight', '76.3kg', 'InBody · 4 Oct (yesterday)'],
+    ['Body fat', '18.7%', 'goal 15% · InBody · 4 Oct (yesterday)'],
+    ['Fat mass', '14.3kg', 'InBody · 4 Oct (yesterday)'],
+    ['BMR', '1,709kcal', 'InBody · 4 Oct (yesterday)']]);
+  eq('the BMR column shows on phones too', tr.querySelector('th:nth-child(6)').className, '');
+  click(app, '[data-body="scale"]');
+  eq('the scale measures no BMR: its view keeps the goal cell',
+     top().map(c => c[0]), ['Weight', 'Body fat', 'Fat mass', 'Goal']);
+  click(app, '[data-body="inbody"]');
   /* Pace: fat 15.6 -> 14.268 over 23 days is 0.405 kg a week. Lean 62.03 kg
    * at 15% is 72.98 kg, holding 10.95 kg of fat: 3.32 kg to go, ~8 weeks. */
   const pace = [...tr.querySelectorAll('.cell')].find(c => /Pace to/.test(T(c)));
@@ -459,7 +474,7 @@ console.log('\n=== every tab has an icon and its name, on the phone and the desk
   const app = await boot({ daily: daily([{ date: TODAY, cal: 600, bmr: 1709 }]) });
   for (const bar of ['#navTabs', '#navRail']) {
     const tabs = [...app.d.querySelectorAll(bar + ' button')];
-    eq(bar + ': four tabs, each named', tabs.map(b => T(b)), ['Today', 'Week', 'Trends', 'History']);
+    eq(bar + ': four tabs, each named', tabs.map(b => T(b)), ['Today', 'Week', 'Health Report', 'History']);
     eq(bar + ': each with a drawn icon, hidden from screen readers',
        tabs.map(b => { const s = b.querySelector('svg.nav-ic');
                        return !!s && s.getAttribute('aria-hidden') === 'true' && s.children.length > 0; }),

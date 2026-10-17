@@ -116,7 +116,7 @@ needs permission to **write** Weight and Body fat, or nothing arrives.
   reading before noon**. A second weigh-in never adds to the first, and an
   evening one never replaces a morning one — the morning reading is the one the
   burn prices steps with.
-- Trends then offers a toggle: **InBody** or **Daily scale**.
+- The Health Report tab then offers a toggle: **InBody** or **Daily scale**.
 
 **The InBody stays the north star.** A $25 scale's body fat is a trend line,
 not a measurement. Nothing from the scale touches the `Baselines` tab, and the
