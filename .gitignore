@@ -6,3 +6,7 @@ Thumbs.db
 # belong in a public repo. Kept locally.
 build-plan.md
 .gstack/
+
+# Session handoff notes: the same personal data (scans, BMR, body fat) as
+# build-plan.md. Kept locally.
+handoff.md
