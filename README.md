@@ -321,6 +321,31 @@ After either, if the day's fat is back within the limit, the "fat over from
 ..." line is removed too, so the diary never names culprits for an overshoot
 that is no longer there.
 
+## How Chat writes: the Inbox
+
+Claude Chat can't call the API's URL itself: its fetch tool refuses an
+address it built rather than one it was shown. So after he says yes, Chat
+uses its Google Sheets connector to add one row to the `Inbox` tab, column A
+only, holding the request it would have put in a link:
+
+```
+action=log&date=today&addCalories=520&addProtein=32&addFat=18&addCarbs=60&mealNote=chicken%20rice&n=qkzvta
+```
+
+Every minute `processInbox()` runs new rows through the same functions a link
+would (`log`, `unlog`, `edit`, `scan`; never `delete`) and writes back `ok`,
+`error` or `skipped`, the API's summary, and the time. `n=` is a marker Chat
+makes up once per yes: a request that has already run is skipped, so a
+repeated append can't log a meal twice, while two identical coffees with
+their own `n=` both count. One column means a value can't land in the wrong
+one, and there's no token, since writing to the sheet already needs his
+Google account.
+
+**Setup, once:** paste the new `api.gs`, redeploy, then in the Apps Script
+editor pick `setUpInbox` and press Run. It creates the tab and the
+one-minute trigger, and Google asks once to allow the script to run on a
+schedule. Running it again replaces the trigger rather than adding a second.
+
 ## Why the asset URLs carry a `?v=`
 
 GitHub Pages serves everything with `Cache-Control: max-age=600`, so a phone

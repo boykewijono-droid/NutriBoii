@@ -66,7 +66,8 @@ function call(sheets, store, params, verb, body) {
   let captured = null;
   const sandbox = {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss },
-    LockService: { getDocumentLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
+    LockService: { getDocumentLock: () => ({ tryLock: () => true, releaseLock: () => {} }),
+                   getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     PropertiesService: {
       getDocumentProperties: () => ({
         getProperty: (k) => (k in store ? store[k] : null),
@@ -102,7 +103,7 @@ function call(sheets, store, params, verb, body) {
   if (body) e.postData = { contents: JSON.stringify(body) };
   const src = fs.readFileSync('C:/projects/NutriBoii/sheet/api.gs', 'utf8');
   const keys = Object.keys(sandbox);
-  new Function(...keys, src + '\nreturn ' + (verb === 'POST' ? 'doPost' : 'doGet') + '(arguments[arguments.length-1]);')
+  new Function(...keys, src + '\nreturn ' + (verb === 'POST' ? 'doPost' : verb && verb !== 'GET' ? verb : 'doGet') + '(arguments[arguments.length-1]);')
     (...keys.map(k => sandbox[k]), e);
   return captured;
 }
@@ -813,6 +814,83 @@ console.log('\n=== unlog never ADDS, whatever it is sent ===');
   ok('a negative macro is refused too', !negP.ok && /cannot be negative/.test(negP.error), JSON.stringify(negP));
   ok('the meal is still there after a refusal', /lunch/.test(String(rowOf(sheets, 'Daily Log', '2026-09-22')[13])),
      String(rowOf(sheets, 'Daily Log', '2026-09-22')[13]));
+}
+
+/* ---- the Inbox: Chat appends a request row, a trigger runs it ----------- */
+const INBOX_HDR = ['Request', 'Status', 'Result', 'Done'];
+const inboxWorld = () => { const w = setup(); w.sheets['Inbox'] = makeSheet(INBOX_HDR); return w; };
+// what Chat's Google Sheets tool does: one new row, column A only
+const append = (sheets, req) => { const sh = sheets['Inbox']; sh.getRange(sh.getLastRow() + 1, 1).setValue(req); };
+const tick = (sheets, store) => call(sheets, store, {}, 'processInbox');   // the one-minute trigger
+const inboxRows = (sheets) => sheets['Inbox']._grid.slice(1).filter(r => r[0] !== '');
+
+console.log('\n=== inbox: a request Chat appends is run like a link would be ===');
+{
+  const { sheets, store } = inboxWorld();
+  append(sheets, 'action=log&date=' + D + '&addCalories=250&addProtein=8&addFat=14&addCarbs=20' +
+                 '&mealNote=home%20coffee%20%2B%20low%20fat%20milk&n=qkzvta');
+  ok('nothing happens until the trigger runs', !rowOf(sheets, 'Daily Log', D));
+  tick(sheets, store);
+  const o = dayRow(sheets);
+  ok('THE POINT: the meal is logged, numbers and all',
+     o.Cal_Eaten === 250 && o.Protein_g === 8 && o.Fat_g === 14 && o.Carbs_g === 20, JSON.stringify(o));
+  ok('%2B is a plus and %20 a space, as in a link',
+     o.Notes === '- home coffee + low fat milk (250 kcal, P8 F14 C20)', o.Notes);
+  const r = inboxRows(sheets)[0];
+  ok('the row says ok, with the API\'s own summary', r[1] === 'ok' && /250 kcal/.test(r[2]), JSON.stringify(r));
+  ok('and when it ran', /SGT$/.test(String(r[3])), r[3]);
+  tick(sheets, store);
+  ok('a finished row is never run again', dayRow(sheets).Cal_Eaten === 250, String(dayRow(sheets).Cal_Eaten));
+}
+
+console.log('\n=== inbox: one yes can never log twice; two coffees still count ===');
+{
+  const { sheets, store } = inboxWorld();
+  const req = 'action=log&date=' + D + '&addCalories=80&mealNote=kopi%20c&n=abcdef';
+  append(sheets, req);
+  tick(sheets, store);
+  append(sheets, req);                   // Chat unsure, appends the same request again
+  tick(sheets, store);
+  ok('the repeat (same n=) is skipped, and says why', inboxRows(sheets)[1][1] === 'skipped' &&
+     /row 2/.test(inboxRows(sheets)[1][2]), JSON.stringify(inboxRows(sheets)[1]));
+  ok('so the day holds ONE kopi', dayRow(sheets).Cal_Eaten === 80, String(dayRow(sheets).Cal_Eaten));
+  append(sheets, 'action=log&date=' + D + '&addCalories=80&mealNote=kopi%20c&n=ghijkl');
+  tick(sheets, store);
+  ok('a second kopi, its own n=, is a second kopi', dayRow(sheets).Cal_Eaten === 160 &&
+     String(dayRow(sheets).Notes).split('kopi c').length - 1 === 2, String(dayRow(sheets).Notes));
+}
+
+console.log('\n=== inbox: edit and unlog go through it too, and errors are written back ===');
+{
+  const { sheets, store } = inboxWorld();
+  append(sheets, 'action=log&date=' + D + '&addCalories=520&addProtein=32&addFat=18&addCarbs=60&mealNote=chicken%20rice&n=aaaaaa');
+  append(sheets, 'action=edit&date=' + D + '&match=chicken%20rice&newCalories=260&newProtein=16&newFat=9&newCarbs=30&n=bbbbbb');
+  append(sheets, 'action=unlog&date=' + D + '&match=laksa&n=cccccc');
+  append(sheets, 'action=delete&date=' + D + '&confirm=yes&n=dddddd');
+  tick(sheets, store);
+  const rows = inboxRows(sheets);
+  ok('rows run in order in one pass: the log, then the edit', rows[0][1] === 'ok' && rows[1][1] === 'ok' &&
+     dayRow(sheets).Cal_Eaten === 260, JSON.stringify(rows.map(r => r[1])));
+  ok('a refusal is written back with its reason', rows[2][1] === 'error' && /No meal/.test(rows[2][2]), rows[2][2]);
+  ok('delete is not something the inbox will do', rows[3][1] === 'error' && /log, unlog, edit and scan only/.test(rows[3][2]),
+     rows[3][2]);
+  ok('and the day survived it', dayRow(sheets).Cal_Eaten === 260, String(dayRow(sheets).Cal_Eaten));
+}
+
+console.log('\n=== inbox: no token needed, a pasted link works, an empty inbox is a no-op ===');
+{
+  const { sheets, store } = inboxWorld();
+  tick(sheets, store);
+  ok('an empty inbox does nothing and does not fail', inboxRows(sheets).length === 0);
+  append(sheets, 'https://script.google.com/macros/s/X/exec?token=WRONG&action=log&date=' + D +
+                 '&addCalories=100&mealNote=apple&format=json&n=zzzzzz');
+  tick(sheets, store);
+  ok('a whole link pasted in works, and its token is ignored', inboxRows(sheets)[0][1] === 'ok' &&
+     dayRow(sheets).Cal_Eaten === 100, JSON.stringify(inboxRows(sheets)[0]));
+  append(sheets, 'action=log&date=' + D + '&addCalories=lots&n=yyyyyy');
+  tick(sheets, store);
+  ok('a bad number is an error row, not a crash', inboxRows(sheets)[1][1] === 'error' &&
+     /must be a number/.test(inboxRows(sheets)[1][2]), JSON.stringify(inboxRows(sheets)[1]));
 }
 
 console.log('\n' + '='.repeat(46));

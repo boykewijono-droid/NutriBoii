@@ -514,6 +514,116 @@ function editMeal(p) {
   }
 }
 
+/* --- the Inbox: Chat writes a request row, a trigger runs it ----------- */
+/* Claude Chat cannot call this API itself: its fetch tool refuses any
+ * address it built rather than one it was shown (31 Oct 2026), so every log
+ * came back as a link for him to tap. It CAN write a cell through its Google
+ * Sheets connector. So it appends one row to this tab, column A only, holding
+ * the same query string it would have put in the link:
+ *
+ *     action=log&date=today&addCalories=250&mealNote=home%20coffee&n=qkzvta
+ *
+ * and processInbox(), on a one-minute trigger, runs it through the very same
+ * functions a link would: logDay, unlogMeal, editMeal, addScan. Nothing about
+ * how a meal is written changes; only how the request arrives.
+ *
+ * One column, so there is no column for a value to land in by mistake. No
+ * token: writing to this sheet at all already needs his Google account.
+ * Status, Result and Done are written back, so Chat can read how it went.
+ *
+ * n= is a marker Chat makes up once per yes. A row whose exact request has
+ * already run is skipped, so a nervous re-append can never log a meal twice;
+ * two of the same coffee carry different n= and both count. A request with
+ * no n= is never treated as a repeat. */
+var INBOX_TAB = 'Inbox';
+var INBOX_HEAD = ['Request', 'Status', 'Result', 'Done'];
+var INBOX_KEEP = 200;              // rows kept; older finished ones go
+
+/** Run ONCE from the editor: makes the tab and the one-minute trigger.
+ *  Running it again replaces the trigger rather than adding a second. */
+function setUpInbox() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(INBOX_TAB) || ss.insertSheet(INBOX_TAB);
+  if (String(sh.getRange(1, 1).getValue() || '') === '') {
+    sh.getRange(1, 1, 1, INBOX_HEAD.length).setValues([INBOX_HEAD]);
+    sh.setFrozenRows(1);
+  }
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'processInbox') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(1).create();
+  Logger.log('Inbox ready: the "' + INBOX_TAB + '" tab exists and processInbox runs every minute.');
+}
+
+var INBOX_ACTIONS = { log: logDay, unlog: unlogMeal, edit: editMeal, scan: addScan };
+
+/** "action=log&mealNote=kopi%20c%20%2B%20toast&n=x" -> its parameters, read
+ *  exactly as a link's would be: '+' is a space, %2B a plus. A whole link
+ *  pasted in works too; its token is ignored. */
+function inboxParams(req) {
+  var q = String(req).trim(), at = q.indexOf('?');
+  if (at >= 0) q = q.slice(at + 1);
+  var raw = {};
+  q.split('&').forEach(function (pair) {
+    if (!pair) return;
+    var eq = pair.indexOf('=');
+    var k = eq < 0 ? pair : pair.slice(0, eq), v = eq < 0 ? '' : pair.slice(eq + 1);
+    var dec = function (s) {
+      s = s.replace(/\+/g, ' ');
+      try { return decodeURIComponent(s); } catch (e) { return s; }
+    };
+    raw[dec(k)] = dec(v);
+  });
+  delete raw.token;
+  return readParams({ parameter: raw });
+}
+
+function processInbox() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return;           // the last run is still going
+  try {
+    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INBOX_TAB);
+    if (!sh || sh.getLastRow() < 2) return;
+    var n = sh.getLastRow() - 1;
+    var vals = sh.getRange(2, 1, n, 2).getValues();
+    var ran = {};                            // request text -> the row it ran in
+    for (var i = 0; i < n; i++) {
+      var req = String(vals[i][0] || '').trim();
+      if (!req) continue;
+      var once = /(^|[?&])n=[^&]+/.test(req);
+      if (vals[i][1] !== '' && vals[i][1] != null) {
+        if (once && vals[i][1] === 'ok') ran[req] = i + 2;
+        continue;
+      }
+      var status, result;
+      if (once && ran[req]) {
+        status = 'skipped';
+        result = 'The same request (same n=) already ran in row ' + ran[req] + '; not run twice.';
+      } else {
+        try {
+          var p = inboxParams(req);
+          var action = String(p.action || '').toLowerCase();
+          var fn = INBOX_ACTIONS[action];
+          if (!fn) throw new Error('The inbox runs log, unlog, edit and scan only (got "' + (action || 'no action') + '").');
+          var out = fn(p);
+          status = 'ok';
+          result = (out && out.summary) || 'Done.';
+          if (once) ran[req] = i + 2;
+        } catch (err) {
+          status = 'error';
+          result = String(err && err.message || err);
+        }
+      }
+      sh.getRange(i + 2, 2, 1, 3).setValues([[status, result, nowSGT()]]);
+    }
+    // Keep the tab short: the oldest finished rows go once it passes the cap.
+    var extra = sh.getLastRow() - 1 - INBOX_KEEP;
+    if (extra > 0 && typeof sh.deleteRows === 'function') sh.deleteRows(2, extra);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /** This meal's calories: whatever addCalories carried in the same call. */
 function mealKcal(p) {
   var keys = ['addcalories', 'addcal', 'addkcal'];
