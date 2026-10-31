@@ -112,8 +112,9 @@ function handle(e, verb) {
     else if (action === 'get')  out = getDay(p);
     else if (action === 'delete') out = deleteDay(p);
     else if (action === 'unlog') out = unlogMeal(p);
+    else if (action === 'edit')  out = editMeal(p);
     else if (action === 'sync') out = hsSync(e);
-    else throw new Error('Unknown action "' + action + '". Use log, unlog, scan, get, delete, sync or ping.');
+    else throw new Error('Unknown action "' + action + '". Use log, unlog, scan, get, edit, delete, sync or ping.');
 
     if (out && typeof out === 'object') out.serverTime = nowSGT();
     return asHtml ? htmlReply(out) : jsonReply(out);
@@ -304,9 +305,8 @@ function appendMeal(sh, row, p) {
   var timed = p.mealnotetimed == null ? '' : String(p.mealnotetimed).trim();
   var meal = timed || (p.mealnote == null ? '' : String(p.mealnote).trim());
   if (meal) {
-    var kcal = mealKcal(p);
     lines.push('- ' + (timed ? Utilities.formatDate(new Date(), 'Asia/Singapore', 'h:mm a') + ' ' : '') +
-      meal + (kcal == null ? '' : ' (' + kcal + ' kcal)'));
+      meal + mealBracket({ kcal: mealKcal(p), p: mealAdd(p, 'protein'), f: mealAdd(p, 'fat'), c: mealAdd(p, 'carbs') }));
   }
   var plain = p.noteline == null ? '' : String(p.noteline).trim();
   if (plain) lines.push(plain);
@@ -326,10 +326,11 @@ function appendMeal(sh, row, p) {
  *  the calories behind in the total — which is exactly how 22 Sept ended up
  *  with a diary reading 1,915 and a Calories cell reading 1,895.
  *
- *  The calories come out of the line's own bracket, "(780 kcal)", so there is
- *  nothing to remember and nothing to work out. Macros are not in the line,
- *  so pass subProtein / subFat / subCarbs to take those back too; leave them
- *  off and only the calories move.
+ *  The calories and macros come out of the line's own bracket,
+ *  "(780 kcal, P48 F30 C70)", so there is nothing to remember and nothing to
+ *  work out. A line from before macros were stored, "(780 kcal)", takes only
+ *  its calories off unless subProtein / subFat / subCarbs are passed. If the
+ *  day's fat is back within the limit, the "fat over from ..." line goes too.
  *
  *      action=unlog&date=today&match=panuozzo
  *
@@ -355,76 +356,43 @@ function unlogMeal(p) {
     var row = findRow(sh, date);
     if (!row) throw new Error('Nothing logged for ' + date + ', so there is nothing to remove.');
 
-    var cur = String(sh.getRange(row, 14).getValue() || '');
-    var lines = cur.split('\n');
-    var bullets = [], hits = [];
-    var low = needle.toLowerCase();
-    for (var i = 0; i < lines.length; i++) {
-      if (!/^\s*-\s+/.test(lines[i])) continue;      // meals only, never the fat line
-      bullets.push(lines[i].trim());
-      if (lines[i].toLowerCase().indexOf(low) >= 0) hits.push(i);
-    }
-    if (!hits.length) {
-      throw new Error('No meal on ' + date + ' matches "' + needle + '". The day holds: ' +
-        (bullets.length ? bullets.join(' | ') : 'no meals yet') + '.');
-    }
-    var dupes = 0;
-    if (hits.length > 1) {
-      var which = [], same = true;
-      for (var j = 0; j < hits.length; j++) {
-        which.push(lines[hits[j]].trim());
-        if (lines[hits[j]].trim() !== lines[hits[0]].trim()) same = false;
-      }
-      // Two lines with the SAME text are the "logged it twice" case, and no
-      // wording can tell them apart — asking the caller to be more specific
-      // would be asking for the impossible. Removing either is the same act,
-      // so take the last one and say what happened.
-      if (!same) {
-        throw new Error(hits.length + ' meals on ' + date + ' match "' + needle +
-          '". Be more specific: ' + which.join(' | ') + '.');
-      }
-      dupes = hits.length;
-      hits = [hits[hits.length - 1]];
-    }
+    var lines = String(sh.getRange(row, 14).getValue() || '').split('\n');
+    var hit = findMeal(lines, needle, date), dupes = hit.dupes;
+    var line = lines[hit.index], meal = parseMeal(line);
 
-    var line = lines[hits[0]];
-    // "(780 kcal)" - the meal's own figure, written when it was logged
-    var m = line.match(/\((\d+(?:\.\d+)?)\s*kcal\)\s*$/i);
-    var kcal = m ? Number(m[1]) : null;
-    var override = toNum(p.subcalories != null ? p.subcalories : (p.subcal != null ? p.subcal : p.subkcal));
-    if (override != null) kcal = override;
+    // The calories and macros come out of the line's own bracket. A number
+    // sent with the call wins: that is how a line written before macros were
+    // stored, or one with no bracket at all, gets its numbers.
+    var kcal = toNum(p.subcalories != null ? p.subcalories : (p.subcal != null ? p.subcal : p.subkcal));
+    if (kcal == null) kcal = meal.kcal;
     if (kcal == null) {
       throw new Error('"' + line.trim() + '" carries no calories in brackets. ' +
         'Send subCalories=<number> to say how many to take off.');
     }
-
-    // Take the calories (and any macros offered) back off the totals. Never
-    // below zero: a negative day is a symptom, not a number worth keeping.
-    var totals = {}, seen = {}, clamped = [];
-    var subs = { subcalories: kcal };
+    var subs = { 3: kcal, 4: meal.p, 5: meal.f, 6: meal.c };
     for (var key in p) {
-      if (SUB_MAP[key] && SUB_MAP[key] !== 3) subs[key] = p[key];
+      var c = SUB_MAP[key];
+      if (!c || c === 3) continue;
+      var v = toNum(p[key]);
+      if (v == null) throw new Error('"' + key + '" must be a number (got "' + p[key] + '").');
+      subs[c] = v;
     }
-    for (var k in subs) {
-      var col = SUB_MAP[k];
-      if (!col || seen[col]) continue;
-      var v = toNum(subs[k]);
-      if (v == null) throw new Error('"' + k + '" must be a number (got "' + subs[k] + '").');
+
+    // Take them back off the totals. Never below zero: a negative day is a
+    // symptom, not a number worth keeping.
+    var totals = {}, clamped = [];
+    for (var col = 3; col <= 6; col++) {
+      if (subs[col] == null) continue;
       // unlog only ever takes away. A negative would quietly ADD, through an
       // action whose whole name promises the opposite.
-      if (v < 0) throw new Error('"' + k + '" cannot be negative (got ' + v +
-        '). unlog only ever takes calories off; to add, use action=log.');
-      seen[col] = 1;
-      var had = sh.getRange(row, col).getValue();
-      var base = (had === '' || had == null || isNaN(had)) ? 0 : Number(had);
-      var left = Math.round((base - v) * 10) / 10;
-      if (left < 0) { clamped.push(headerName(sh, col)); left = 0; }
-      sh.getRange(row, col).setValue(left);
-      totals[headerName(sh, col)] = left;
+      if (subs[col] < 0) throw new Error(headerName(sh, col) + ' to take off cannot be negative (got ' +
+        subs[col] + '). unlog only ever takes off; to add, use action=log.');
+      totals[headerName(sh, col)] = shiftTotal(sh, row, col, -subs[col], clamped);
     }
 
-    lines.splice(hits[0], 1);
+    lines.splice(hit.index, 1);
     sh.getRange(row, 14).setValue(lines.join('\n').replace(/^\n+|\n+$/g, ''));
+    var fatNote = clearFatNote(sh, row);
     writeDerived(sh, row);
 
     return {
@@ -432,10 +400,114 @@ function unlogMeal(p) {
       removed: line.trim(), kcal: kcal, totals: totals,
       duplicates: dupes || undefined,
       clamped: clamped.length ? clamped : undefined,
+      fatNoteRemoved: fatNote || undefined,
       summary: 'Removed ' + (dupes ? 'one of ' + dupes + ' identical lines, ' : '') +
         '"' + line.trim() + '" and took ' + kcal + ' kcal back off ' + date +
         (dupes ? ' (' + (dupes - 1) + ' still there)' : '') +
-        (clamped.length ? ' (' + clamped.join(', ') + ' would have gone below zero, so held at 0)' : '') + '.'
+        (clamped.length ? ' (' + clamped.join(', ') + ' would have gone below zero, so held at 0)' : '') +
+        (fatNote ? '. Fat is back within the limit, so "' + fatNote + '" went too' : '') + '.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Change a meal already in the diary: a smaller portion, or the wrong food.
+ *
+ *      action=edit&date=today&match=chicken%20rice
+ *        &newCalories=260&newProtein=16&newFat=9&newCarbs=30
+ *      action=edit&date=today&match=pork&newNote=chicken%20rice
+ *        &newCalories=480&newProtein=35&newFat=14&newCarbs=60
+ *
+ *  The new* values are the MEAL's corrected numbers, not the day's. The API
+ *  reads the old ones from the line's bracket, moves each day total by the
+ *  difference, rewrites the line in place and recomputes the day: one call,
+ *  so a change can never land half done the way unlog-then-log could.
+ *
+ *  A number left out stays as it was. A line from before macros were stored
+ *  has no old protein, fat or carbs to subtract, so changing one of those
+ *  needs old<Macro>=<g> with it; without, it refuses rather than guesses. */
+var EDIT_FIELDS = [
+  { col: 3, key: 'kcal', name: 'calories', alias: ['calories', 'cal', 'kcal'] },
+  { col: 4, key: 'p', name: 'protein', alias: ['protein', 'proteing'] },
+  { col: 5, key: 'f', name: 'fat', alias: ['fat', 'fatg'] },
+  { col: 6, key: 'c', name: 'carbs', alias: ['carbs', 'carbsg'] }
+];
+function editParam(p, prefix, f) {
+  for (var i = 0; i < f.alias.length; i++) {
+    var v = p[prefix + f.alias[i]];
+    if (v != null && String(v).trim() !== '') {
+      var n = toNum(v);
+      if (n == null) throw new Error('"' + prefix + f.name + '" must be a number (got "' + v + '").');
+      if (n < 0) throw new Error('"' + prefix + f.name + '" cannot be negative (got ' + n + ').');
+      return Math.round(n * 10) / 10;
+    }
+  }
+  return null;
+}
+
+function editMeal(p) {
+  var needle = String(p.match == null ? '' : p.match).trim();
+  if (!needle) throw new Error('edit needs match=<a word from the meal>, e.g. match=chicken%20rice.');
+  var text = String(p.newnote != null ? p.newnote : (p.mealnote != null ? p.mealnote : '')).trim();
+  var want = {}, any = !!text;
+  EDIT_FIELDS.forEach(function (f) {
+    want[f.key] = editParam(p, 'new', f);
+    if (want[f.key] != null) any = true;
+  });
+  if (!any) throw new Error('edit needs something to change: newNote, newCalories, newProtein, newFat or newCarbs.');
+
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
+  try {
+    var sh = mustGet(DAILY);
+    ensureDailyHeaders(sh);
+    var date = resolveDate(p.date);
+    var row = findRow(sh, date);
+    if (!row) throw new Error('Nothing logged for ' + date + ', so there is nothing to change.');
+
+    var lines = String(sh.getRange(row, 14).getValue() || '').split('\n');
+    var hit = findMeal(lines, needle, date);
+    var was = lines[hit.index].trim(), old = parseMeal(was), now = parseMeal(was);
+
+    // Work out every move before writing anything, so a refusal leaves the
+    // day exactly as it was.
+    var moves = [];
+    EDIT_FIELDS.forEach(function (f) {
+      if (want[f.key] == null) return;
+      var from = old[f.key] != null ? old[f.key] : editParam(p, 'old', f);
+      if (from == null) {
+        throw new Error('"' + was + '" does not say its ' + f.name + ', so the change cannot be worked out. ' +
+          'Send old' + f.name.charAt(0).toUpperCase() + f.name.slice(1) + '=<what was logged> with it.');
+      }
+      now[f.key] = want[f.key];
+      moves.push({ col: f.col, name: f.name, from: from, to: want[f.key] });
+    });
+    if (text) now.text = text;
+
+    var totals = {}, changes = {}, clamped = [];
+    moves.forEach(function (m) {
+      changes[m.name] = { from: m.from, to: m.to };
+      if (m.to !== m.from) totals[headerName(sh, m.col)] = shiftTotal(sh, row, m.col, m.to - m.from, clamped);
+    });
+    var line = mealLine(now);
+    lines[hit.index] = line;
+    sh.getRange(row, 14).setValue(lines.join('\n'));
+    var fatNote = clearFatNote(sh, row);
+    writeDerived(sh, row);
+
+    var said = moves.filter(function (m) { return m.to !== m.from; })
+      .map(function (m) { return m.name + ' ' + m.from + ' -> ' + m.to; });
+    return {
+      ok: true, action: 'edit', date: date,
+      was: was, now: line, changes: changes, totals: totals,
+      duplicates: hit.dupes || undefined,
+      clamped: clamped.length ? clamped : undefined,
+      fatNoteRemoved: fatNote || undefined,
+      summary: 'Changed "' + was + '" to "' + line + '" on ' + date +
+        (said.length ? ' (' + said.join(', ') + ')' : '') +
+        (clamped.length ? ' (' + clamped.join(', ') + ' would have gone below zero, so held at 0)' : '') +
+        (fatNote ? '. Fat is back within the limit, so "' + fatNote + '" went too' : '') + '.'
     };
   } finally {
     lock.releaseLock();
@@ -452,6 +524,124 @@ function mealKcal(p) {
     }
   }
   return null;
+}
+
+/* --- a meal line, and the numbers it carries --------------------------- */
+/* Each meal's bracket holds its calories AND its macros:
+ *
+ *      - chicken rice (520 kcal, P32 F18 C60)
+ *
+ * so taking a meal out, or changing it, can read back exactly what it put
+ * in. Before 31 Oct 2026 the bracket held calories only, and the macros of a
+ * meal logged in another chat were simply lost to unlog. Lines written then,
+ * "(520 kcal)", still read: their macros are just unknown. */
+var MEAL_TAIL = /\s*\((\d+(?:\.\d+)?)\s*kcal((?:[,\s]*[PFC]\d+(?:\.\d+)?)*)\s*\)\s*$/i;
+var MEAL_TIME = /^(\d{1,2}:\d{2}\s*[AP]M)\s+/i;
+
+/** The macro a meal call adds, for its line: addProtein=32 -> 32. */
+function mealAdd(p, what) {
+  var v = toNum(p['add' + what] != null ? p['add' + what] : p['add' + what + 'g']);
+  return v == null ? null : Math.round(v * 10) / 10;
+}
+
+/** " (520 kcal, P32 F18 C60)": only what is known; nothing without calories. */
+function mealBracket(m) {
+  if (m.kcal == null) return '';
+  var mac = [];
+  if (m.p != null) mac.push('P' + m.p);
+  if (m.f != null) mac.push('F' + m.f);
+  if (m.c != null) mac.push('C' + m.c);
+  return ' (' + Math.round(m.kcal) + ' kcal' + (mac.length ? ', ' + mac.join(' ') : '') + ')';
+}
+
+/** A diary bullet, taken apart: its time, its food words, and its numbers
+ *  (null where the bracket does not say). */
+function parseMeal(line) {
+  var body = String(line).replace(/^\s*[-•*]\s*/, '');
+  var out = { time: '', text: body, kcal: null, p: null, f: null, c: null };
+  var m = body.match(MEAL_TAIL);
+  if (m) {
+    out.kcal = Number(m[1]);
+    out.text = body.slice(0, m.index);
+    (m[2].match(/[PFC]\d+(?:\.\d+)?/gi) || []).forEach(function (t) {
+      out[t.charAt(0).toLowerCase()] = Number(t.slice(1));
+    });
+  }
+  var t = out.text.match(MEAL_TIME);
+  if (t) { out.time = t[1]; out.text = out.text.slice(t[0].length); }
+  out.text = out.text.trim();
+  return out;
+}
+
+function mealLine(m) {
+  return '- ' + (m.time ? m.time + ' ' : '') + m.text + mealBracket(m);
+}
+
+/** Which bullet of the day `needle` names. Refuses rather than guesses: none,
+ *  or two that differ, is an error listing the day's meals. Two IDENTICAL
+ *  lines are the "logged it twice" case, which no wording can tell apart, so
+ *  the last one is taken and the count reported. */
+function findMeal(lines, needle, date) {
+  var bullets = [], hits = [], low = needle.toLowerCase();
+  for (var i = 0; i < lines.length; i++) {
+    if (!/^\s*-\s+/.test(lines[i])) continue;      // meals only, never the fat line
+    bullets.push(lines[i].trim());
+    if (lines[i].toLowerCase().indexOf(low) >= 0) hits.push(i);
+  }
+  if (!hits.length) {
+    throw new Error('No meal on ' + date + ' matches "' + needle + '". The day holds: ' +
+      (bullets.length ? bullets.join(' | ') : 'no meals yet') + '.');
+  }
+  if (hits.length > 1) {
+    var which = [], same = true;
+    for (var j = 0; j < hits.length; j++) {
+      which.push(lines[hits[j]].trim());
+      if (lines[hits[j]].trim() !== lines[hits[0]].trim()) same = false;
+    }
+    if (!same) {
+      throw new Error(hits.length + ' meals on ' + date + ' match "' + needle +
+        '". Be more specific: ' + which.join(' | ') + '.');
+    }
+    return { index: hits[hits.length - 1], dupes: hits.length };
+  }
+  return { index: hits[0], dupes: 0 };
+}
+
+/** The fat limit from the Targets tab, as the dashboard reads it; 70 g if
+ *  the tab or the key is missing. */
+function fatLimit() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Targets');
+  if (sh && sh.getLastRow() >= 2) {
+    var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+    for (var i = 0; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === 'fat_ceiling_g' && toNum(vals[i][1]) != null) return toNum(vals[i][1]);
+    }
+  }
+  return 70;
+}
+
+/** After a meal comes out or shrinks, a "fat over from ..." line can be left
+ *  saying something no longer true. Once the day's fat is known and back
+ *  within the limit, it goes. Blank fat is unknown, not under: it stays. */
+function clearFatNote(sh, row) {
+  var fat = sh.getRange(row, 5).getValue();
+  if (fat === '' || fat == null || isNaN(fat) || Number(fat) > fatLimit()) return null;
+  var lines = String(sh.getRange(row, 14).getValue() || '').split('\n');
+  var gone = lines.filter(function (l) { return /^\s*fat over\b/i.test(l); });
+  if (!gone.length) return null;
+  sh.getRange(row, 14).setValue(lines.filter(function (l) { return !/^\s*fat over\b/i.test(l); })
+    .join('\n').replace(/^\n+|\n+$/g, ''));
+  return gone.join(' | ').trim();
+}
+
+/** Move one total by `by`, never below zero. Returns the new value. */
+function shiftTotal(sh, row, col, by, clamped) {
+  var had = sh.getRange(row, col).getValue();
+  var base = (had === '' || had == null || isNaN(had)) ? 0 : Number(had);
+  var left = Math.round((base + by) * 10) / 10;
+  if (left < 0) { clamped.push(headerName(sh, col)); left = 0; }
+  sh.getRange(row, col).setValue(left);
+  return left;
 }
 
 function addScan(p) {
@@ -1506,6 +1696,7 @@ function headingFor(o) {
   if (o.action === 'scan') return o.created ? 'Scan saved' : 'Scan updated';
   if (o.action === 'delete') return o.deleted ? 'Deleted' : 'Nothing to delete';
   if (o.action === 'unlog')  return 'Meal removed';
+  if (o.action === 'edit')   return 'Meal changed';
   return o.created ? 'Logged' : 'Updated';
 }
 

@@ -299,13 +299,27 @@ no calories in brackets silences the check rather than making it guess.
 
 ## Undoing a meal
 
+Each meal's bullet carries its own numbers, `- chicken rice (520 kcal, P32
+F18 C60)`, so a meal can be taken back or changed later without anyone having
+to remember what went in. Lines from before 31 Oct 2026 carry calories only.
+
 Logging adds; `unlog` takes back. `action=unlog&date=today&match=panuozzo`
-finds that one bullet in the day's diary, reads the calories out of its own
-bracket, subtracts exactly those from the day's total, removes the line and
-recomputes the day. It exists because removing a line by hand leaves its
-calories behind in `Cal_Eaten`, and the diary and the total then disagree with
-nothing on screen to say which is right. It refuses rather than guesses: two
-matches remove nothing and the error lists both.
+finds that one bullet in the day's diary, reads the calories and macros out of
+its own bracket, subtracts exactly those from the day's totals, removes the
+line and recomputes the day. It exists because removing a line by hand leaves
+its calories behind in `Cal_Eaten`, and the diary and the total then disagree
+with nothing on screen to say which is right. It refuses rather than guesses:
+two matches remove nothing and the error lists both.
+
+`edit` changes a meal in one step: half the plate, or chicken that was logged
+as pork. `action=edit&match=chicken%20rice&newCalories=260&newProtein=16&...`
+takes the meal's corrected numbers, moves each day total by the difference
+from what the line says, and rewrites the line in place. One call, so a
+correction never lands half done the way removing and re-logging could.
+
+After either, if the day's fat is back within the limit, the "fat over from
+..." line is removed too, so the diary never names culprits for an overshoot
+that is no longer there.
 
 ## Why the asset URLs carry a `?v=`
 

@@ -128,14 +128,20 @@ When `Fat_g` goes over the 70 g limit, **name the foods that caused it** in
 Write it plainly, like `fat over from chocolate + cashews + olive oil`.
 
 **Log each meal as a line of ten words or fewer**, sent as `mealNote`. The API
-adds the bullet and the meal's calories itself, from the `addCalories` in the
-same call, so `Notes` becomes the day's food diary:
+adds the bullet and the meal's own numbers itself, from the `addCalories`,
+`addProtein`, `addFat` and `addCarbs` in the same call, so `Notes` becomes the
+day's food diary:
 
 ```
-- home coffee + full cream milk (250)
-- char kway teow, iced kopi (740)
-- soto madura + egg, sambal, 3 crackers, chicken satay (680)
+- home coffee + full cream milk (250 kcal, P8 F14 C20)
+- char kway teow, iced kopi (740 kcal, P22 F38 C80)
+- soto madura + egg, sambal, 3 crackers, chicken satay (680 kcal, P40 F30 C60)
 ```
+
+**Always send all four numbers with a meal.** The line is the meal's record:
+removing it or changing it later reads its calories and macros back from
+there, even in another chat, days later. A number you leave out is a number
+that can't be taken back off.
 
 Send the food text only — **no bullet, no time, no calories in the text.** You
 have no clock, so never write a time and never ask him for one. (If a time is
@@ -307,13 +313,14 @@ line there leaves the calories behind in the total, and the two drift apart.
 ```
 
 `match` is a word from the meal, matched against the day's bullets only. The
-API reads the calories out of the line's own bracket -- `(780 kcal)` -- and
-takes exactly that off `Cal_Eaten`, then removes the line and recomputes the
-day. The reply's `removed` field is the line it took out; say it back to him.
+API reads the calories and macros out of the line's own bracket --
+`(780 kcal, P48 F30 C70)` -- takes exactly those off the day's totals, removes
+the line and recomputes the day. The reply's `removed` field is the line it
+took out; say it back to him.
 
-Add `subProtein` / `subFat` / `subCarbs` when you know them, which you
-usually do, because you logged the meal in the first place. Leave them off
-and only the calories move.
+Lines logged before 31 Oct 2026 hold calories only, `(780 kcal)`. For those,
+add `subProtein` / `subFat` / `subCarbs` if you know them; leave them off and
+only the calories move.
 
 It refuses rather than guesses, and the error tells you what to do next:
 
@@ -322,7 +329,39 @@ It refuses rather than guesses, and the error tells you what to do next:
 - the line has no `(N kcal)` bracket -> send `subCalories=<number>`
 - a total that would go below zero is held at 0 and the reply says so
 
-The "fat over from ..." line is not a meal and is never touched by `unlog`.
+The "fat over from ..." line is not a meal, so `unlog` never matches it. But
+once the day's fat is back within his limit, the API removes that line by
+itself, and the reply's `fatNoteRemoved` says so. Tell him.
+
+### Changing a meal: half the plate, or the wrong food
+
+When he ate less than he logged ("I only finished half", or a second photo of
+what was left), or a meal was wrong ("it was chicken, not pork", "skimmed, not
+fresh milk"), use `edit`. **Never** unlog and log again: that is two writes,
+and if the second fails the meal is simply gone.
+
+```
+...&action=edit&date=today&match=chicken%20rice&newCalories=260&newProtein=16&newFat=9&newCarbs=30&format=json
+...&action=edit&date=today&match=pork&newNote=chicken%20chop%20rice&newCalories=480&newProtein=38&newFat=16&newCarbs=55&format=json
+```
+
+- The `new…` numbers are **the meal's** corrected numbers, not the day's.
+  The API reads the old ones from the line, moves each day total by the
+  difference, rewrites the line in place and recomputes the day.
+- Send **all four** new numbers whenever the food or the portion changes. A
+  number you leave out stays as it was, which is only right when it truly
+  didn't change.
+- `newNote` replaces the food words; leave it out to keep them.
+- From a photo of the leftovers, estimate what he **actually ate** and say
+  what you assumed: "about half the rice and all the chicken, so ~340 kcal".
+- A line from before 31 Oct 2026 has no macros stored. Changing protein, fat
+  or carbs on one needs the old value too (`oldProtein=48` and so on); without
+  it the API refuses rather than guess, and says so.
+- It refuses on no match or two different matches, exactly like `unlog`.
+
+The reply's `changes` holds each number's from and to, and `totals` what each
+day total became. If fat drops back within his limit, the "fat over" line goes
+on its own, as with `unlog`.
 
 Other actions: `action=scan` for an InBody row (`weight`, `bodyFat`,
 `fatMass`, `muscle`, `bmr`), and `action=get&date=...` to read a day back.
@@ -332,10 +371,16 @@ Other actions: `action=scan` for an InBody row (`weight`, `bodyFat`,
 You can fetch the API yourself (confirmed 31 Oct 2026), so you log for him.
 He does not tap links any more.
 
-1. **Ask first, every time.** Before any write (`log`, `unlog`, `scan`), show
-   him what will be written, in words, and ask "Log it?":
+1. **Ask first, every time.** Before any write (`log`, `unlog`, `edit`,
+   `scan`), show him what will be written, in words, and ask:
    > Lunch: chicken rice, 520 kcal, 32 g protein, 18 g fat, 60 g carbs.
    > Log it?
+
+   For a change, show before and after:
+   > Change chicken rice: 520 → 260 kcal, protein 32 → 16 g, fat 18 → 9 g,
+   > carbs 60 → 30 g. Change it?
+
+   For a removal, name the line: "Remove pesto chicken panuozzo (780 kcal)?"
 
    Write only on a clear yes. One yes covers that one write. If he changes
    anything, show the new version and ask again. Reads (`get`) need no yes.
@@ -345,13 +390,15 @@ He does not tap links any more.
    `n`. It makes each URL unique, so a meal he has twice in a day, with the
    same URL, can never come back as a stored copy of the first reply without
    being written.
-3. **Check the reply.** It must say `"ok": true`, and `added` must show each
-   total moved by what you sent. Then confirm in one line: what was logged,
-   the day so far, and the deficit from the reply's summary.
+3. **Check the reply.** It must say `"ok": true`, and the totals must have
+   moved by what you sent (`added` for a log, `totals` for unlog and edit).
+   Then confirm in one line: what changed, the day so far, and the deficit
+   from the reply's summary.
 4. **If it fails, check before you retry.** A call that errored or timed out
    may still have written. Never send the same write twice on one yes. Call
-   `action=get&date=...&format=json` first: if the meal's line is in `Notes`,
-   it landed, so say so. If not, try once more. If that fails too, tell him
+   `action=get&date=...&format=json` first and look at `Notes`: a logged meal
+   is there, a removed one is gone, a changed one shows its new numbers. If
+   it landed, say so. If not, try once more. If that fails too, tell him
    what went wrong and hand him a link to tap instead (next section but one).
 
 ### Calling it yourself — ALWAYS add `&format=json`

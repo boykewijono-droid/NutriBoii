@@ -514,6 +514,13 @@ console.log('\n=== the diary check stays quiet when it cannot be sure ===');
   eq('within 5 kcal is rounding', await quiet('- Oats (400 kcal)\n- Rice (497 kcal)'), true);
   eq('a meal with no bracket means it cannot add up', await quiet('- Oats (400 kcal)\n- Rice'), true);
   eq('a note that is not a diary', await quiet('felt good today'), true);
+  // Since 31 Oct 2026 a bracket carries the meal's macros too. Those lines
+  // must still count, or the check would go quiet for every new day.
+  eq('meals with macros in the bracket still add up (400 + 500 = 900)',
+     await quiet('- Oats (400 kcal, P20 F8 C60)\n- 8:10 AM rice (500 kcal, P12 F0.4)'), true);
+  eq('and still get caught when they do not (400 + 520 = 920, total 900)',
+     await quiet('- Oats (400 kcal, P20 F8 C60)\n- rice (520 kcal, P12 F1 C110)'), false);
+  eq('old and new lines mix', await quiet('- Oats (400 kcal)\n- rice (500 kcal, P12)'), true);
 }
 
 console.log('\n=== theme: Auto, Light, Dark, and no Night ===');

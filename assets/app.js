@@ -1487,7 +1487,9 @@ function diaryCheck(d) {
   for (var i = 0; i < lines.length; i++) {
     if (!/^\s*[-\u2022*]\s/.test(lines[i])) continue;
     bullets++;
-    var m = lines[i].match(/\((\d+(?:\.\d+)?)\s*kcal\)\s*$/i);
+    // "(520 kcal)", or since 31 Oct 2026 "(520 kcal, P32 F18 C60)": the same
+    // bracket as MEAL_TAIL in sheet/api.gs.
+    var m = lines[i].match(/\((\d+(?:\.\d+)?)\s*kcal(?:[,\s]*[PFC]\d+(?:\.\d+)?)*\s*\)\s*$/i);
     if (m) sum += Number(m[1]); else unpriced++;
   }
   if (!bullets || unpriced) return null;

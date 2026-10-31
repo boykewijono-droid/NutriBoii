@@ -433,9 +433,11 @@ console.log('\n=== logging a meal WITHOUT reading the day first ===');
 
   const lines = String(named.Notes).split('\n');
   ok('each meal is its own line in Notes', lines.length === 2, JSON.stringify(named.Notes));
-  ok('a bullet and the meal\'s own calories in brackets',
-     lines[0] === '- home coffee + full cream milk (250 kcal)', lines[0]);
-  ok('second meal, its own calories', lines[1] === '- chicken rice, no skin (640 kcal)', lines[1]);
+  // The bracket carries the meal's macros too, only the ones that were sent
+  // (no carbs with the coffee), so unlog and edit can read them back later.
+  ok('a bullet and the meal\'s own calories and macros in brackets',
+     lines[0] === '- home coffee + full cream milk (250 kcal, P8 F14)', lines[0]);
+  ok('second meal, its own numbers', lines[1] === '- chicken rice, no skin (640 kcal, P45 F22 C60)', lines[1]);
   ok('every reply carries the Singapore time',
      /^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM) SGT$/.test(call2.serverTime), call2.serverTime);
 }
@@ -520,7 +522,8 @@ console.log('\n=== unlog: a meal comes back out of BOTH the diary and the total 
   ok('the other meals are untouched',
      /office coffee/.test(String(after.Notes)) && /tiramisu/.test(String(after.Notes)), String(after.Notes));
   ok('no blank line left where it was', !/\n\n/.test(String(after.Notes)), JSON.stringify(String(after.Notes)));
-  ok('macros stay put unless asked for', after.Protein_g === 53, 'got ' + after.Protein_g);
+  // 2 + 48 + 3 = 53 protein; the panuozzo's line says P48, so 5 is left.
+  ok('its protein comes off too, read from its own line', after.Protein_g === 5, 'got ' + after.Protein_g);
   ok('the deficit is recomputed, not left stale', after.Deficit === '' || after.Deficit == null ||
      typeof after.Deficit === 'number', String(after.Deficit));
 }
@@ -619,6 +622,139 @@ console.log('\n=== unlog holds at zero rather than going negative ===');
   ok('a total that would go below zero is held at zero',
      out.ok && rowOf(sheets, 'Daily Log', '2026-09-22')[2] === 0, JSON.stringify(out));
   ok('and the reply says so plainly', /held at 0/.test(out.summary), out.summary);
+}
+
+/* ---- changing a meal: half a portion, or the wrong food ---------------- */
+const D = '2026-10-31';
+const dayRow = (sheets) => { const o = {}; DAILY_HDR.forEach((h, i) => o[h] = rowOf(sheets, 'Daily Log', D)[i]); return o; };
+const meal = (sheets, store, o) => asJson(call(sheets, store, Object.assign(
+  { token: 'TESTTOKEN', action: 'log', format: 'json', date: D }, o)));
+const edit = (sheets, store, o) => asJson(call(sheets, store, Object.assign(
+  { token: 'TESTTOKEN', action: 'edit', format: 'json', date: D }, o)));
+
+console.log('\n=== edit: he ate half the plate he photographed ===');
+{
+  const { sheets, store } = setup();
+  call(sheets, store, { token: 'TESTTOKEN', action: 'scan', format: 'json',
+                        date: '2026-10-17', weight: '75.4', bodyFat: '19.2', bmr: '1685' });
+  meal(sheets, store, { addCalories: '250', addProtein: '8', addFat: '14', addCarbs: '20', mealNote: 'home coffee + full cream milk' });
+  meal(sheets, store, { addCalories: '520', addProtein: '32', addFat: '18', addCarbs: '60', mealNote: 'chicken rice' });
+  const out = edit(sheets, store, { match: 'chicken rice', newCalories: '260', newProtein: '16', newFat: '9', newCarbs: '30' });
+  const o = dayRow(sheets);
+  ok('one call, and it says what changed', out.ok && out.changes.calories.from === 520 && out.changes.calories.to === 260,
+     JSON.stringify(out));
+  // 250+520 -> 250+260 = 510; protein 8+32 -> 8+16 = 24; fat 14+18 -> 14+9 = 23; carbs 20+60 -> 20+30 = 50
+  ok('THE POINT: every total moves by the difference',
+     [o.Cal_Eaten, o.Protein_g, o.Fat_g, o.Carbs_g].join() === '510,24,23,50',
+     [o.Cal_Eaten, o.Protein_g, o.Fat_g, o.Carbs_g].join());
+  const lines = String(o.Notes).split('\n');
+  ok('the line is rewritten in place, with its new numbers',
+     lines[1] === '- chicken rice (260 kcal, P16 F9 C30)', lines[1]);
+  ok('the other meal is untouched', lines[0] === '- home coffee + full cream milk (250 kcal, P8 F14 C20)', lines[0]);
+  ok('the burn and deficit are recomputed', typeof o.TDEE === 'number' && o.Deficit === o.TDEE - 510,
+     o.TDEE + ' / ' + o.Deficit);
+}
+
+console.log('\n=== edit: it was chicken, not pork; skimmed, not full cream ===');
+{
+  const { sheets, store } = setup();
+  meal(sheets, store, { addCalories: '600', addProtein: '30', addFat: '28', addCarbs: '55', mealNote: 'pork chop rice' });
+  meal(sheets, store, { addCalories: '120', addProtein: '6', addFat: '7', addCarbs: '9', mealNote: 'fresh milk 200ml' });
+  const a = edit(sheets, store, { match: 'pork', newNote: 'chicken chop rice',
+    newCalories: '520', newProtein: '38', newFat: '16', newCarbs: '55' });
+  const b = edit(sheets, store, { match: 'fresh milk', newNote: 'skimmed milk 200ml',
+    newCalories: '70', newFat: '0.4' });
+  const o = dayRow(sheets);
+  const lines = String(o.Notes).split('\n');
+  ok('the food words change', a.ok && b.ok && lines[0] === '- chicken chop rice (520 kcal, P38 F16 C55)', lines[0]);
+  ok('numbers left out stay as they were (protein and carbs of the milk)',
+     lines[1] === '- skimmed milk 200ml (70 kcal, P6 F0.4 C9)', lines[1]);
+  // 600+120 -> 520+70 = 590; protein 36 -> 44; fat 35 -> 16.4; carbs 64 unchanged
+  ok('the totals follow', [o.Cal_Eaten, o.Protein_g, o.Fat_g, o.Carbs_g].join() === '590,44,16.4,64',
+     [o.Cal_Eaten, o.Protein_g, o.Fat_g, o.Carbs_g].join());
+}
+
+console.log('\n=== edit: a line from before macros were stored asks, it does not guess ===');
+{
+  const { sheets, store } = setup();
+  const sh = sheets['Daily Log'];
+  sh.getRange(2, 1, 1, 14).setValues([[D, '', 800, 50, 30, 90, '', '', '', 1685, '', '', '', '- nasi lemak (800 kcal)']]);
+  const no = edit(sheets, store, { match: 'nasi lemak', newCalories: '400', newProtein: '25' });
+  ok('changing protein it never stored is refused, and says how to proceed',
+     !no.ok && /oldProtein/.test(no.error), JSON.stringify(no));
+  ok('and nothing moved meanwhile', dayRow(sheets).Cal_Eaten === 800 && dayRow(sheets).Notes === '- nasi lemak (800 kcal)',
+     JSON.stringify(dayRow(sheets)));
+  const yes = edit(sheets, store, { match: 'nasi lemak', newCalories: '400', newProtein: '25', oldProtein: '50' });
+  const o = dayRow(sheets);
+  ok('told the old protein, it changes both', yes.ok && o.Cal_Eaten === 400 && o.Protein_g === 25,
+     JSON.stringify(o));
+  ok('and the line now carries what it knows', o.Notes === '- nasi lemak (400 kcal, P25)', o.Notes);
+}
+
+console.log('\n=== edit refuses rather than guesses ===');
+{
+  const { sheets, store } = setup();
+  meal(sheets, store, { addCalories: '250', mealNote: 'home coffee + full cream milk' });
+  meal(sheets, store, { addCalories: '80', mealNote: 'office coffee + low fat milk' });
+  const two = edit(sheets, store, { match: 'coffee', newCalories: '100' });
+  ok('two different matches: nothing changes, both are listed',
+     !two.ok && /full cream/.test(two.error) && /low fat/.test(two.error) && dayRow(sheets).Cal_Eaten === 330,
+     JSON.stringify(two));
+  const none = edit(sheets, store, { match: 'laksa', newCalories: '100' });
+  ok('no match says what IS there', !none.ok && /office coffee/.test(none.error), JSON.stringify(none));
+  const nothing = edit(sheets, store, { match: 'office' });
+  ok('nothing to change is an error, not a silent no-op', !nothing.ok && /newCalories/.test(nothing.error), JSON.stringify(nothing));
+  const neg = edit(sheets, store, { match: 'office', newCalories: '-20' });
+  ok('a negative meal is refused', !neg.ok && /negative/.test(neg.error), JSON.stringify(neg));
+  const day = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'edit', format: 'json',
+    date: '2026-01-01', match: 'x', newCalories: '1' }));
+  ok('a day never logged is an error, not a new row', !day.ok && /Nothing logged/.test(day.error), JSON.stringify(day));
+}
+
+console.log('\n=== edit keeps a meal\'s time, and picks one of two identical lines ===');
+{
+  const { sheets, store } = setup();
+  const sh = sheets['Daily Log'];
+  sh.getRange(2, 1, 1, 14).setValues([[D, '', 240, '', '', '', '', '', '', 1685, '', '', '',
+    '- 8:10 AM kopi c (120 kcal, P2 F4 C18)\n- 8:10 AM kopi c (120 kcal, P2 F4 C18)']]);
+  const out = edit(sheets, store, { match: 'kopi', newNote: 'kopi c kosong', newCalories: '40', newCarbs: '2' });
+  const lines = String(dayRow(sheets).Notes).split('\n');
+  ok('the time stays at the front', out.ok && lines[1] === '- 8:10 AM kopi c kosong (40 kcal, P2 F4 C2)', lines[1]);
+  ok('the identical twin is left as it was', lines[0] === '- 8:10 AM kopi c (120 kcal, P2 F4 C18)', lines[0]);
+  ok('only one meal moved the total: 240 - 120 + 40 = 160', dayRow(sheets).Cal_Eaten === 160, String(dayRow(sheets).Cal_Eaten));
+}
+
+console.log('\n=== a "fat over" line goes once fat is back within the limit ===');
+{
+  const { sheets, store } = setup();
+  meal(sheets, store, { addCalories: '250', addFat: '14', mealNote: 'home coffee + full cream milk' });
+  meal(sheets, store, { addCalories: '980', addFat: '62', mealNote: 'nasi lemak, fried chicken',
+    noteLine: 'fat over from fried chicken + coconut rice' });
+  // 14 + 62 = 76, over 70. A small trim, 62 -> 60, leaves 74: still over.
+  const trim = edit(sheets, store, { match: 'nasi lemak', newFat: '60' });
+  ok('still over the limit: the line stays', trim.ok && !trim.fatNoteRemoved &&
+     /fat over from/.test(String(dayRow(sheets).Notes)), String(dayRow(sheets).Notes));
+  // Half the plate: 60 -> 30, so 44 in all, within 70.
+  const half = edit(sheets, store, { match: 'nasi lemak', newCalories: '490', newFat: '30' });
+  ok('back within it: the line goes, and the reply says so', half.ok &&
+     /fat over from fried chicken/.test(half.fatNoteRemoved) && !/fat over/.test(String(dayRow(sheets).Notes)),
+     JSON.stringify(half));
+  ok('the meals stay', String(dayRow(sheets).Notes).split('\n').length === 2, String(dayRow(sheets).Notes));
+}
+
+console.log('\n=== the fat limit is the Targets tab\'s, and unlog clears the line too ===');
+{
+  const { sheets, store } = setup();
+  sheets['Targets'] = makeSheet(['Key', 'Value', 'Unit', 'Notes']);
+  sheets['Targets'].getRange(2, 1, 1, 4).setValues([['fat_ceiling_g', 40, 'g', '']]);
+  meal(sheets, store, { addCalories: '250', addFat: '35', mealNote: 'croissant' });
+  meal(sheets, store, { addCalories: '300', addFat: '20', mealNote: 'cheese toast',
+    noteLine: 'fat over from croissant + cheese' });
+  // 55 g, then the toast comes out: 35, within the 40 g limit set in Targets.
+  const out = asJson(call(sheets, store, { token: 'TESTTOKEN', action: 'unlog', format: 'json', date: D, match: 'cheese toast' }));
+  ok('unlog takes the toast\'s fat off by itself: 55 - 20 = 35', dayRow(sheets).Fat_g === 35, String(dayRow(sheets).Fat_g));
+  ok('and, within the Targets limit of 40, the fat line goes', out.ok && !!out.fatNoteRemoved &&
+     String(dayRow(sheets).Notes) === '- croissant (250 kcal, F35)', String(dayRow(sheets).Notes));
 }
 
 
