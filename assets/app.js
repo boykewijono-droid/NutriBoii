@@ -1132,6 +1132,7 @@ function renderToday() {
   // The finished day, in one line, so closing the day still feels like
   // something. Tapping it opens that day in full.
   h += lastDayStrip(t);
+  h += staleNotes('weigh');
 
   // The two numbers that actually predict progress, given side by side.
   var roll = rollingDeficit(M.today, CFG.rollingWindowDays || 7);
@@ -1572,8 +1573,14 @@ function scaleCheck() {
   var weighIns = cleanMorningWeights(M.scale || []);
   if (weighIns.length < 10) return { state: 'none', n: weighIns.length };
   // the window: from the first clean weigh-in (at most 90 days back) to the
-  // last finished day - today is still eating
+  // last finished day - today is still eating - or to the last weigh-in if
+  // that is earlier. When the scale stopped arriving (18 Oct 2026, for four
+  // weeks) the window still ran to yesterday: the trend was fitted to weight
+  // that ended in October, set against food eaten into November, and printed
+  // as one period. Days with no weight behind them judge nothing.
   var end = addDays(M.today, -1);
+  var lastWeighIn = weighIns[weighIns.length - 1].date;
+  if (lastWeighIn < end) end = lastWeighIn;
   var start = weighIns[0].date, floor = addDays(end, -89);
   if (start < floor) start = floor;
   var fed = calendarRange(start, end).map(getDay).filter(function (d) { return d.countable; });
@@ -1597,7 +1604,8 @@ function scaleCheck() {
     implied: intake - slope * SCALE_KCAL_PER_KG,
     band: 1.96 * se * SCALE_KCAL_PER_KG,
     model: model, intake: intake, slope: slope,
-    days: fed.length, weighIns: n, span: span, start: start, end: end
+    days: fed.length, weighIns: n, span: span, start: start, end: end,
+    stopped: end < addDays(M.today, -STALE_WEIGH_DAYS)
   };
 }
 
@@ -1623,7 +1631,32 @@ function scaleCheckCell(c) {
     '<span class="sub">' + verdict + 'NutriBoii\u2019s burn averaged ' + nf(Math.round(c.model)) +
       ' over the same ' + c.days + ' days (' + (gap >= 0 ? '+' : '\u2212') + nf(Math.abs(gap)) + '). From ' +
       c.weighIns + ' morning weigh-ins, ' + fmtDay(c.start, { weekday: undefined, day: 'numeric', month: 'short' }) +
-      ' to ' + fmtDay(c.end, { weekday: undefined, day: 'numeric', month: 'short' }) + '.</span></div>';
+      ' to ' + fmtDay(c.end, { weekday: undefined, day: 'numeric', month: 'short' }) + '.' +
+      (c.stopped ? ' No weigh-in has arrived since, so it stops there.' : '') + '</span></div>';
+}
+
+/* Data that has quietly stopped arriving. The scale and the InBody reach the
+ * sheet through a chain of phone apps, and when a link breaks nothing fails:
+ * the last number just sits there looking current. From 18 Oct 2026 no
+ * weigh-in and no scan arrived for four weeks, and the page said nothing.
+ *
+ * A weigh-in is daily, so a few missing days is already a broken link. Scans
+ * are every two or three weeks, so that one only asks. */
+var STALE_WEIGH_DAYS = 3;
+var STALE_SCAN_DAYS = 21;
+function staleNotes(which) {
+  var out = [], day = { weekday: undefined, day: 'numeric', month: 'short' };
+  var lastW = M.scale.length ? M.scale[M.scale.length - 1].date : null;
+  if (lastW && daysBetween(lastW, M.today) >= STALE_WEIGH_DAYS) {
+    out.push('<b>No weigh-in has arrived since ' + esc(fmtDay(lastW, day)) + '</b> (' + daysBetween(lastW, M.today) +
+      ' days). If you have weighed in since, the scale’s link to the phone has stopped. Steps are being priced at that last weight.');
+  }
+  var lastS = M.scans.length ? M.scans[M.scans.length - 1].date : null;
+  if (which !== 'weigh' && lastS && daysBetween(lastS, M.today) >= STALE_SCAN_DAYS) {
+    out.push('<b>The last InBody scan to arrive is ' + esc(fmtDay(lastS, day)) + '</b> (' + daysBetween(lastS, M.today) +
+      ' days ago). If you have scanned since, it has not reached NutriBoii, and your BMR and pace are still that scan’s.');
+  }
+  return out.map(function (t) { return '<div class="stale">' + t + '</div>'; }).join('');
 }
 
 function projectionCell(p, t) {
@@ -1649,7 +1682,8 @@ function projectionCell(p, t) {
     (p.span >= 14 ? Math.round(p.span / 7) + ' weeks' : p.span + ' days');
   return '<div class="cell hl">' + lbl +
     '<span class="big">~' + wk + '<span class="u">week' + (wk === 1 ? '' : 's') + '</span></span>' +
-    '<span class="sub">At ' + nf(p.ratePerWeek, 2) + ' kg fat/week, from ' + nf(p.current.bf, 1) + '% today. ' +
+    '<span class="sub">At ' + nf(p.ratePerWeek, 2) + ' kg fat/week, from ' + nf(p.current.bf, 1) + '% ' +
+      (p.current.date === M.today ? 'today' : 'at the ' + fmtDay(p.current.date, { weekday: undefined, day: 'numeric', month: 'short' }) + ' scan') + '. ' +
     nf(p.toLose, 1) + ' kg to go, landing near ' + nf(p.goalWeight, 1) + ' kg.' +
     ' <em style="font-style:normal;color:var(--ink-dim)">Based on ' + basis +
     (p.thin ? ' — thin, another scan will sharpen it' : '') + '.</em></span></div>';
@@ -1848,13 +1882,13 @@ function renderTrends() {
   var series = bodySource === 'scale' ? M.scale : M.scans;
   var cur = series.length ? series[series.length - 1] : null;
 
-  var h = hasScale ? '<div class="sec-head"><div class="filters">' +
+  var h = staleNotes() + (hasScale ? '<div class="sec-head"><div class="filters">' +
       '<button type="button" data-body="inbody" aria-pressed="' + (bodySource === 'inbody') + '">InBody</button>' +
       '<button type="button" data-body="scale" aria-pressed="' + (bodySource === 'scale') + '">Daily scale</button>' +
     '</div><span class="lbl">' + (bodySource === 'scale'
       ? M.scale.length + ' weigh-in' + (M.scale.length === 1 ? '' : 's') + ' · a trend line, not a measurement'
       : M.scans.length + ' InBody scan' + (M.scans.length === 1 ? '' : 's') + ' · the one to plan against') +
-    '</span></div>' : '';
+    '</span></div>' : '');
 
   // The InBody measures BMR, the number every day's burn is built on, so it
   // gets a cell of its own and the goal moves under body fat. The scale

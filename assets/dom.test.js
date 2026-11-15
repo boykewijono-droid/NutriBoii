@@ -435,6 +435,60 @@ console.log('\n=== the scale check, with enough weigh-ins ===');
   eq('too early is never amber', c.cls, 'big');
 }
 
+console.log('\n=== the scale stopped arriving: the check stops with it, and the page says so ===');
+{
+  /* 18 Oct 2026: the last weigh-in. Four weeks on, the check still ran its
+   * window to yesterday: weight fitted to October, food averaged into
+   * November, printed as one period.
+   *
+   * Here: sixty days of food, 6 Aug to 4 Oct, eating 2,000 for the first fifty
+   * and 3,000 for the last ten; weigh-ins on the first fifty only (to 24 Sep),
+   * falling 0.02 kg a day. The window must end on 24 Sep:
+   *   weight says 2000 + 0.02 x 7700 = 2,154 over those 50 days
+   * Run to yesterday instead, intake averages (50x2000 + 10x3000)/60 = 2,167
+   * and the answer comes out 2,321: ten days of eating with no weight behind
+   * them. */
+  const rows = [], body = [BODY_HEAD];
+  for (let i = 0; i < 60; i++) {
+    const date = new Date(Date.UTC(2026, 9, 4 - 59 + i)).toISOString().slice(0, 10);
+    rows.push({ date, cal: i < 50 ? 2000 : 3000, bmr: 1672 });
+    if (i < 50) body.push(bodyRow(date, (80 - 0.02 * i).toFixed(2), '7:30 AM'));
+  }
+  const app = await boot({ daily: daily(rows), base: BASE, body: body.join('\n') });
+  eq('Today says the weigh-ins stopped, and since when', [...app.d.querySelectorAll('#view-today .stale')].map(T),
+     ['No weigh-in has arrived since 24 Sept (11 days). If you have weighed in since, the scale’s link to the phone has stopped. Steps are being priced at that last weight.']);
+  click(app, '[data-view="trends"]');
+  const c = [...app.d.querySelectorAll('#view-trends .cell')].find(x => /Your weight says/.test(T(x)));
+  eq('the check uses only the days it has weight for', T(c.querySelector('.big')), '2,154± 0 kcal/day');
+  eq('and says where it stops, and why', T(c.querySelector('.sub')),
+     'Outside the range: the formula is running LOW. NutriBoii’s burn averaged 1,672 over the same 50 days (−482). ' +
+     'From 50 morning weigh-ins, 6 Aug to 24 Sept. No weigh-in has arrived since, so it stops there.');
+  eq('the Health Report carries the same warning', [...app.d.querySelectorAll('#view-trends .stale')].length, 1);
+  eq('clean', [app.errors, badTokens(app)], [[], []]);
+  app.w.close();
+}
+
+console.log('\n=== scans: asked about after three weeks, quiet before; fresh data warns of nothing ===');
+{
+  // BASE: the newest scan is 4 Oct, yesterday. BODY: a weigh-in this morning.
+  const fresh = await boot({ daily: daily(HISTORY.concat([todayRow(900)])), base: BASE, body: BODY });
+  click(fresh, '[data-view="trends"]');
+  eq('nothing stale, nothing said', fresh.d.querySelectorAll('.stale').length, 0);
+  const pace = [...fresh.d.querySelectorAll('#view-trends .cell')].find(c => /Pace to/.test(T(c)));
+  eq('the pace names the scan it starts from, not "today"', /from 18.7% at the 4 Oct scan./.test(T(pace)), true);
+  fresh.w.close();
+
+  // The newest scan 11 Sept: 24 days before the pinned 5 Oct.
+  const old = await boot({ daily: daily(HISTORY.concat([todayRow(900)])), body: BODY,
+    base: [BASE_HEAD, '2026-08-24,76.3,20.8,15.9,34.2,1674,', '2026-09-11,75.9,20.6,15.6,34.3,1672,'].join('\n') });
+  eq('Today stays quiet about scans: they are not daily', old.d.querySelectorAll('#view-today .stale').length, 0);
+  click(old, '[data-view="trends"]');
+  eq('the Health Report asks', [...old.d.querySelectorAll('#view-trends .stale')].map(T),
+     ['The last InBody scan to arrive is 11 Sept (24 days ago). If you have scanned since, it has not reached NutriBoii, and your BMR and pace are still that scan’s.']);
+  eq('clean', [old.errors, badTokens(old)], [[], []]);
+  old.w.close();
+}
+
 console.log('\n=== a sheet still on the old column names ===');
 {
   // Before the migration: Calories and TDEE_Target, no ExerciseMin, and an
