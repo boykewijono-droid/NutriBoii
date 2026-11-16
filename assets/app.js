@@ -513,6 +513,9 @@ function buildDays(rows, scans, targets, today, scale) {
     d.activity     = a.total * actK;
     d.burnWorkouts = a.workouts * actK;
     d.burnSteps    = a.steps * actK;
+    // the same parts before the adjustment, for the breakdown a stranger can add up
+    d.rawWorkouts  = a.workouts;
+    d.rawSteps     = a.steps;
     d.outsideSteps = a.outsideSteps;
     d.legacyBurn   = a.legacy;
     if (d.bmr != null) {
@@ -583,20 +586,114 @@ function voidDay(date) {
 }
 function getDay(date) { return M.days[date] || voidDay(date); }
 
-/** "BMR 1,672 + workouts 448 + steps 274": the day's burn, in its parts. */
-function burnBreakdown(d) {
-  if (d.bmr == null || d.tdee == null) return '';
-  var parts = 'BMR ' + nf(Math.round(d.bmr));
-  if (d.legacyBurn) {
-    parts += d.burnWorkouts ? ' + workout &times; 0.7 ' + nf(Math.round(d.burnWorkouts))
-                            : ' + steps ' + nf(Math.round(d.burnSteps));
+/** The day's burn as lines a stranger can add up, every figure traceable:
+ *
+ *    BMR                                 1,685
+ *    Workouts (731, less 129 resting)     +602
+ *    Steps outside workouts (3,081)       +123
+ *    Total burn before adjustment        2,410
+ *    Adjustment                           −275   (i)
+ *    Burn                                2,135
+ *
+ *  Each line is rounded as shown, the total is the sum of the lines as shown,
+ *  and the Adjustment is the true burn less that total, so the column adds up
+ *  exactly and the burn stays the real figure. At 100% there is no
+ *  adjustment: the parts add straight to the burn. A day from before workout
+ *  minutes were recorded has one activity line, the old rule's.
+ *
+ *  Today is not over, so it starts from the resting burn so far and ends at
+ *  the burn so far: the figure the Today card shows.
+ *
+ *  Returns [{label, value, kind}], kind one of 'part', 'total', 'adj', 'burn';
+ *  null when the burn cannot be worked out. */
+function burnLines(d) {
+  if (d.bmr == null || d.tdee == null) return null;
+  var k = activityFactor(M.targets), parts = [], burn;
+  if (d.inProgress) {
+    parts.push({ n: Math.round(d.bmr * dayFraction()), label: function () {
+      return 'Resting so far (BMR ' + nf(Math.round(d.bmr)) + ' × ' + Math.round(dayFraction() * 100) + '% of the day)';
+    } });
+    burn = burnedSoFar(d);
   } else {
-    if (d.burnWorkouts) parts += ' + workouts ' + nf(Math.round(d.burnWorkouts));
-    if (d.burnSteps) parts += ' + steps ' + nf(Math.round(d.burnSteps));
+    parts.push({ n: Math.round(d.bmr), label: function () { return 'BMR'; } });
+    burn = d.tdee;
   }
-  var k = activityFactor(M.targets);
-  if (k !== 1 && (d.burnWorkouts || d.burnSteps)) parts += ' <em class="nc">(activity counted at ' + Math.round(k * 100) + '%)</em>';
-  return '<div class="row"><span>Burned, built from</span><b>' + parts + '</b></div>';
+  if (d.legacyBurn) {
+    if (d.rawWorkouts) parts.push({ n: Math.round(d.rawWorkouts), label: function () { return 'Workout × 0.7'; } });
+    else if (d.rawSteps) parts.push({ n: Math.round(d.rawSteps), label: function () { return 'Steps'; } });
+  } else {
+    if (d.exercise > 0) {
+      var gross = Math.round(d.exercise), rest = Math.round(d.bmr / 1440 * (d.exMin || 0));
+      parts.push({ n: Math.max(0, gross - rest), label: function () {
+        // the resting figure is whatever makes the line add up: gross less net
+        var r = this.n > 0 ? gross - this.n : rest;
+        return this.n > 0 ? 'Workouts (' + nf(gross) + ', less ' + nf(r) + ' resting)'
+                          : 'Workouts (' + nf(gross) + ', under the ' + nf(r) + ' resting)';
+      } });
+    }
+    if (d.rawSteps) parts.push({ n: Math.round(d.rawSteps), label: function () {
+      return (d.exercise > 0 ? 'Steps outside workouts (' : 'Steps (') + nf(d.outsideSteps) + ')';
+    } });
+  }
+  var sum = parts.reduce(function (s, p) { return s + p.n; }, 0);
+  var adjusted = k !== 1 && parts.length > 1;
+  // With no Adjustment line to carry it, each part's own rounding would leave
+  // the column a calorie off the burn. The last activity line takes it up:
+  // still within a calorie of its true value, and now the column adds up.
+  if (!adjusted && parts.length > 1 && sum !== burn && parts[parts.length - 1].n + burn - sum >= 0) {
+    parts[parts.length - 1].n += burn - sum;
+    sum = burn;
+  }
+  var lines = parts.map(function (p, i) {
+    return { label: p.label(), value: (i ? '+' : '') + nf(p.n), kind: 'part' };
+  });
+  if (adjusted) {
+    lines.push({ label: 'Total burn before adjustment', value: nf(sum), kind: 'total' });
+    lines.push({ label: 'Adjustment', value: signed(burn - sum), kind: 'adj' });
+  }
+  lines.push({ label: d.inProgress ? 'Burned so far' : 'Burn', value: nf(burn), kind: 'burn' });
+  return lines;
+}
+
+/** What the Adjustment is, behind its (i). */
+function adjustmentNote() {
+  var pct = Math.round(activityFactor(M.targets) * 100);
+  return 'Workouts and steps are counted at ' + pct + '%. Your weight over the past weeks moved less than the full ' +
+    'figures said it should, so they are scaled to what your weight supports. The BMR is measured and is never ' +
+    'adjusted. The figure is activity_factor_pct in the Targets tab; the Health Report says what your weight ' +
+    'supports now, so change it when that moves.';
+}
+
+/** The breakdown as day-sheet rows, under its own heading. */
+function burnBreakdown(d) {
+  var lines = burnLines(d);
+  if (!lines) return '';
+  return '<h3>How the burn is built' + (d.inProgress ? ' · so far' : '') + '</h3>' +
+    lines.map(function (l) {
+      return '<div class="row burn-' + l.kind + '"><span>' + esc(l.label) +
+        (l.kind === 'adj' ? infoButton() : '') + '</span><b>' + l.value + '</b></div>' +
+        (l.kind === 'adj' ? infoNote('row-note') : '');
+    }).join('');
+}
+
+/** The (i) beside Adjustment, and the note it opens. */
+function infoButton() {
+  return '<button type="button" class="info" data-act="adjInfo" aria-expanded="false" ' +
+    'aria-label="What the adjustment is"><i aria-hidden="true"></i></button>';
+}
+function infoNote(cls) {
+  return '<div class="' + cls + ' adj-note" hidden>' + esc(adjustmentNote()) + '</div>';
+}
+function toggleAdjInfo(btn) {
+  var row = btn.closest('.row, .hp-row');
+  var note = row && row.nextElementSibling;
+  if (!note || !note.classList.contains('adj-note')) return;
+  var open = note.hidden;
+  note.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // the "?" panel is measured when it opens; it must grow with the note
+  var panel = btn.closest('.hero-panel');
+  if (panel && heroOpen) panel.style.maxHeight = (panel.firstChild.offsetHeight + 4) + 'px';
 }
 
 /** Whether he trained: 'yes', 'no', or null when not known.
@@ -1254,9 +1351,19 @@ function heroDetails(d, t) {
   var plan = calorieTarget(d, t), burn = expectedBurn(d), burned = burnedSoFar(d);
   var eaten = d.cal == null ? 0 : d.cal, pct = 100 - deficitPct(t);
   var rows = [];
+  // the burn so far, line by line, ending at "burned so far"
+  var soFar = function () {
+    var lines = d.inProgress ? burnLines(d) : null;
+    // resting alone is the burn so far: one line says it
+    if (!lines || lines.length <= 2) { if (burned != null) rows.push(['burned so far', nf(burned)]); return; }
+    lines.forEach(function (l) {
+      var label = /^BMR/.test(l.label) ? l.label : l.label.charAt(0).toLowerCase() + l.label.slice(1);
+      rows.push([label, l.value, l.kind]);
+    });
+  };
   if (burn == null || plan == null) {
     rows.push(['eaten', nf(eaten)]);
-    if (burned != null) rows.push(['burned so far', nf(burned)]);
+    soFar();
     if (d.bmr != null) rows.push(['BMR floor', nf(Math.round(d.bmr))]);
     rows.push(['forecast burn', 'needs 3 days']);
     rows.push(['plan', '\u2014']);
@@ -1268,10 +1375,7 @@ function heroDetails(d, t) {
   if (d.bmr != null) rows.push(['BMR floor', nf(Math.round(d.bmr))]);
   rows.push(['plan', nf(plan) + (share < plan ? ' \u00b7 floored' : '')]);
   rows.push(['eaten', nf(eaten)]);
-  if (burned != null) rows.push(['burned so far', nf(burned)]);
-  // what the activity part of the burn is made of, so far today
-  if (d.burnWorkouts) rows.push(['  workouts, net of resting', '+' + nf(Math.round(d.burnWorkouts))]);
-  if (d.burnSteps) rows.push(['  steps outside workouts', '+' + nf(Math.round(d.burnSteps))]);
+  soFar();
   if (eaten > plan) rows.push(['past plan', '+' + nf(Math.round(eaten - plan))]);
   var def = Math.round(burn - eaten);
   rows.push(['deficit \u00b7 burn less eaten', (def >= 0 ? '+' : '\u2212') + nf(Math.abs(def))]);
@@ -1405,7 +1509,9 @@ function heroProgress(d, t) {
     '</div>' +
     '<div class="hero-panel' + (heroOpen ? ' open' : '') + '" id="heroWhy">' +
       '<div class="hp-in">' + details.map(function (r) {
-        return '<div class="hp-row"><span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b></div>';
+        return '<div class="hp-row' + (r[2] ? ' burn-' + r[2] : '') + '"><span>' + esc(r[0]) +
+          (r[2] === 'adj' ? infoButton() : '') + '</span><b>' + esc(r[1]) + '</b></div>' +
+          (r[2] === 'adj' ? infoNote('hp-note') : '');
       }).join('') + '</div>' +
     '</div>' +
   '</div>';
@@ -2360,6 +2466,7 @@ document.addEventListener('click', function (e) {
   switch (t.dataset.act) {
     case 'refresh': return load();
     case 'why': return toggleHeroWhy(t);
+    case 'adjInfo': return toggleAdjInfo(t);
     case 'closeDay': return closeDay();
     case 'theme': return cycleTheme();
     case 'reconfigure': return showSetup('Currently reading: ' + (sheetId() || 'nothing') + '.');

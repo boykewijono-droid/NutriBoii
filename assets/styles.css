@@ -449,6 +449,23 @@ td b{font-weight:500}
 .row b.warn{color:var(--flag)}
 .row b.caution{color:var(--amber)}
 .row b.dash{color:var(--ink-dim);font-weight:400}
+/* the burn, line by line: the column adds up, so the numbers line up */
+.row[class*="burn-"] b,.hp-row[class*="burn-"] b{font-variant-numeric:tabular-nums}
+.row.burn-total,.row.burn-burn{border-top:1px solid var(--line)}
+.row.burn-burn span,.row.burn-total span{color:var(--ink)}
+.row.burn-burn b{font-weight:600}
+.hp-row.burn-total,.hp-row.burn-burn{border-top:1px solid var(--h-line);padding-top:6px}
+/* the (i) beside Adjustment: a small ring, a larger tap area around it */
+.info{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;
+  width:32px;height:32px;margin:-8px -6px -8px 2px;background:transparent;border:0;cursor:pointer;color:inherit}
+.info i{width:17px;height:17px;border-radius:999px;border:1px solid currentColor;display:flex;
+  align-items:center;justify-content:center;font-family:var(--f-mono);font-size:10px;font-weight:600;font-style:normal;opacity:.8}
+.info i::before{content:"i"}
+.info:hover i,.info[aria-expanded="true"] i{opacity:1}
+.info:focus-visible i{outline:2px solid currentColor;outline-offset:2px}
+.row-note{padding:10px 0 12px;border-bottom:1px solid var(--line-soft);font-size:12px;line-height:1.6;color:var(--ink-70)}
+.hp-note{font-family:var(--f-mono);font-size:11.5px;line-height:1.55;color:var(--h-dim)}
+.adj-note[hidden]{display:none}
 .note{margin-top:20px;padding:15px 17px;background:var(--paper-2);border-left:2px solid var(--ink-25);font-size:12px;line-height:1.65;color:var(--ink-70)}
 .note.warn{border-left-color:var(--flag)}
 .note.caution{border-left-color:var(--amber)}

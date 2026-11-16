@@ -138,8 +138,22 @@ function openDay(app, date) {
   click(app, '#opener');
   app.d.querySelector('#opener').remove();
   const rows = {};
-  app.d.querySelectorAll('#daySheet .row').forEach(r => { rows[T(r.querySelector('span'))] = T(r.querySelector('b')); });
+  app.d.querySelectorAll('#daySheet .row:not([class*="burn-"])').forEach(r => { rows[T(r.querySelector('span'))] = T(r.querySelector('b')); });
   return rows;
+}
+/** The open day sheet's burn breakdown, line by line, "label = value". */
+const burnRows = app => [...app.d.querySelectorAll('#daySheet .row[class*="burn-"]')]
+  .map(r => T(r.querySelector('span')) + ' = ' + T(r.querySelector('b')));
+/** Lines of "a = 1,234" add up: every line before the total (or the burn)
+ *  sums to it, and total + adjustment is the burn. */
+function addsUp(lines) {
+  const n = s => Number(s.split(' = ')[1].replace(/,/g, '').replace('−', '-').replace('+', ''));
+  const iTotal = lines.findIndex(l => /^(Total burn before adjustment|total burn before adjustment) = /.test(l));
+  const iBurn = lines.length - 1;
+  const partsEnd = iTotal >= 0 ? iTotal : iBurn;
+  const sum = lines.slice(0, partsEnd).reduce((s, l) => s + n(l), 0);
+  if (iTotal < 0) return sum === n(lines[iBurn]);
+  return sum === n(lines[iTotal]) && n(lines[iTotal]) + n(lines[iTotal + 1]) === n(lines[iBurn]);
 }
 function hero(app) {
   const h = app.d.querySelector('#view-today .hero');
@@ -182,7 +196,9 @@ console.log('\n=== Today, under the plan: what is left in it ===');
   eq('protein and fat against their own limits', h.macros, ['PROTEIN 80/150 g', 'FAT 30/70 g']);
   eq('the "?" panel: every number the card is made of', h.panel, [
     'forecast burn = ~1,920', '85% of burn = 1,632', 'BMR floor = 1,709', 'plan = 1,709 · floored',
-    'eaten = 900', 'burned so far = 1,126', 'steps outside workouts = +129',
+    // 14:00 is 58% of the day: 1,709 x 840/1440 = 997 resting, + 129 = 1,126
+    'eaten = 900', 'resting so far (BMR 1,709 × 58% of the day) = 997', 'steps (4,300) = +129',
+    'burned so far = 1,126',
     'deficit · burn less eaten = +1,020', 'goal · burn less plan = +211']);
   eq('the panel starts closed', h.el.querySelector('.hero-panel').classList.contains('open'), false);
 
@@ -306,8 +322,10 @@ console.log('\n=== Today with a workout: the plan comes off the floor ===');
   eq('1,972 - 1,500 = 472 left in plan', [h.num, h.cap, h.tone], ['472', 'left in plan', 'good']);
   eq('marks', h.ticks.map(k => k.text), ['EATEN1,500', 'PLAN1,972', 'BURN~2,320']);
   eq('not floored, so the note is the burn so far', h.note, '≈1,607 kcal burned so far');
-  eq('the burn, part by part', h.panel.filter(r => /^(plan|workouts|steps outside)/.test(r)),
-     ['plan = 1,972', 'workouts, net of resting = +451', 'steps outside workouts = +159']);
+  // 1,709 x 50/1440 = 59 resting inside the workout; 997 + 451 + 159 = 1,607
+  eq('the burn, part by part, adding up to the burn so far', h.panel.filter(r => /^(plan|resting|workouts|steps|burned)/.test(r)),
+     ['plan = 1,972', 'resting so far (BMR 1,709 × 58% of the day) = 997', 'workouts (510, less 59 resting) = +451',
+      'steps outside workouts (5,300) = +159', 'burned so far = 1,607']);
   const cells = {};
   app.d.querySelectorAll('#view-today .grid.g4 .cell').forEach(c => {
     cells[T(c.querySelector('.lbl'))] = [T(c.querySelector('.big')), T(c.querySelector('.sub'))];
@@ -315,6 +333,38 @@ console.log('\n=== Today with a workout: the plan comes off the floor ===');
   eq('Workout: its minutes, and the steps inside it', cells.Workout, ['50min', '700 steps inside']);
   eq('Exercise', cells.Exercise, ['510kcal', 'so far today']);
   eq('Activity: High, on the workout', cells.Activity, ['High', 'So far today · 510 kcal exercise · 6,000 steps']);
+  eq('no script errors', app.errors, []);
+  app.w.close();
+}
+
+console.log('\n=== Today at activity_factor_pct 62: the "?" panel adds up, then adjusts ===');
+{
+  /* The same day as above. Before adjustment 997 + 451 + 159 = 1,607.
+   * Activity 450.66 + 159.42 = 610.08, at 62% = 378.25, so burned so far is
+   *   1,709 x 840/1440 + 378.25 = 996.92 + 378.25 = 1,375
+   * and the Adjustment is 1,375 - 1,607 = -232. */
+  const app = await boot({ daily: daily(HISTORY.concat([{ date: TODAY, cal: 1500, p: 120, f: 50, c: 150,
+    steps: 6000, ex: 510, min: 50, ws: 700, bmr: 1709 }])), base: BASE, body: BODY,
+    targets: 'Key,Value,Unit,Notes\nactivity_factor_pct,62,%,' });
+  const h = hero(app);
+  const at = h.panel.findIndex(r => /^resting so far/.test(r));
+  const lines = h.panel.slice(at, h.panel.findIndex(r => /^burned so far/.test(r)) + 1);
+  eq('the panel: resting, parts, the total before adjustment, the Adjustment, the burn so far', lines, [
+    'resting so far (BMR 1,709 × 58% of the day) = 997', 'workouts (510, less 59 resting) = +451',
+    'steps outside workouts (5,300) = +159', 'total burn before adjustment = 1,607', 'adjustment = −232',
+    'burned so far = 1,375']);
+  eq('and it adds up', addsUp(lines), true);
+  eq('the card\'s own figure is the same', h.note, '≈1,375 kcal burned so far');
+  const btn = h.el.querySelector('.hp-row.burn-adj [data-act="adjInfo"]');
+  const note = h.el.querySelector('.hp-note.adj-note');
+  eq('Adjustment has an (i), its note closed', [!!btn, note && note.hidden], [true, true]);
+  click(app, '.hp-row.burn-adj [data-act="adjInfo"]');
+  eq('tapping it opens the note, naming the 62% and the setting',
+     [note.hidden, btn.getAttribute('aria-expanded'), /counted at 62%/.test(T(note)), /activity_factor_pct/.test(T(note))],
+     [false, 'true', true, true]);
+  eq('it never mentions Samsung', /samsung/i.test(T(h.el)), false);
+  click(app, '.hp-row.burn-adj [data-act="adjInfo"]');
+  eq('and closes again', note.hidden, true);
   eq('no script errors', app.errors, []);
   app.w.close();
 }
@@ -328,18 +378,30 @@ console.log('\n=== the day sheet: every burn traced to its parts ===');
   eq('its target: 85% of 2,302', r['Calorie target'], '1,957 kcal');
   eq('workout minutes and the steps inside them', [r['Exercise calories'], r['Workout minutes'], r['Steps inside workouts']],
      ['450 kcal', '60 min', '800']);
-  eq('built from: the evening reading priced nothing', r['Burned, built from'], 'BMR 1,672 + workouts 380 + steps 249');
+  /* 450 - 1,672 x 60/1440 (69.67) = 380.33; 8,200 steps x 0.0004 x 76.0 (the
+   * 1 Oct morning; the 2 Oct evening reading prices nothing) = 249.28.
+   * 1,672 + 380.33 + 249.28 = 2,301.61, so the burn is 2,302. Rounded alone
+   * the parts say 2,301; with no Adjustment line to carry it, steps takes the
+   * calorie and reads 250. */
+  eq('built from: every line, adding up to the burn', burnRows(app), [
+    'BMR = 1,672', 'Workouts (450, less 70 resting) = +380', 'Steps outside workouts (8,200) = +250', 'Burn = 2,302']);
+  eq('at 100%: no total before adjustment, no Adjustment', burnRows(app).some(l => /adjust/i.test(l)), false);
+  eq('and it adds up', addsUp(burnRows(app)), true);
   eq('a logged gym day is High', [r['Activity level'], r.Gym], ['High', 'Yes']);
 
   r = openDay(app, '2026-10-04');
-  eq('4 Oct, the walk: the 72 kg outlier priced nothing either', [r['Burned (TDEE)'], r['Burned, built from']],
-     ['2,115 kcal', 'BMR 1,672 + workouts 154 + steps 290']);
+  /* 200 - 1,672 x 40/1440 (46.44) = 153.56; 12,000 less 60 x 40 estimated
+   * inside = 9,600 steps x 0.0004 x 75.5 (3 Oct; the 72 kg outlier prices
+   * nothing) = 289.92. Total 2,115.48 -> 2,115; steps takes up the rounding. */
+  eq('4 Oct, the walk: the 72 kg outlier priced nothing either', [r['Burned (TDEE)'], burnRows(app)],
+     ['2,115 kcal', ['BMR = 1,672', 'Workouts (200, less 46 resting) = +154', 'Steps outside workouts (9,600) = +289', 'Burn = 2,115']]);
+  eq('and it adds up', addsUp(burnRows(app)), true);
   eq('no measured inside steps: shown blank, not invented', r['Steps inside workouts'], '—');
   eq('200 kcal of walking is Medium, not High', r['Activity level'], 'Medium');
 
   r = openDay(app, '2026-10-03');
   eq('3 Oct, before minutes were recorded: the old rule, labelled',
-     [r['Burned (TDEE)'], r['Burned, built from']], ['1,847 kcal', 'BMR 1,672 + workout × 0.7 175']);
+     [r['Burned (TDEE)'], burnRows(app)], ['1,847 kcal', ['BMR = 1,672', 'Workout × 0.7 = +175', 'Burn = 1,847']]);
 
   r = openDay(app, '2026-10-01');
   eq('10,000 steps and no workout: Medium (a big walking day is not High)', r['Activity level'], 'Medium');
@@ -474,12 +536,28 @@ console.log('\n=== activity_factor_pct: the activity is scaled to what his weigh
   // 1 Oct: 10,000 steps at that morning's 76.0 kg = 304 of activity, BMR 1,672.
   //   at 100%: 1,976.   at 50%: 152 -> 1,824, and the BMR is untouched.
   const full = await boot({ daily: daily(HISTORY.concat([todayRow(900)])), base: BASE, body: BODY });
-  eq('unset, every activity calorie counts', openDay(full, '2026-10-01')['Burned, built from'], 'BMR 1,672 + steps 304');
+  openDay(full, '2026-10-01');
+  eq('unset, every activity calorie counts, and no Adjustment line', burnRows(full),
+     ['BMR = 1,672', 'Steps (10,000) = +304', 'Burn = 1,976']);
   full.w.close();
   const half = await boot({ daily: daily(HISTORY.concat([todayRow(900)])), base: BASE, body: BODY, targets: T50 });
   const r = openDay(half, '2026-10-01');
-  eq('at 50, half of it does, and the day says so',
-     [r['Burned (TDEE)'], r['Burned, built from']], ['1,824 kcal', 'BMR 1,672 + steps 152 (activity counted at 50%)']);
+  eq('at 50: the full total first, then the Adjustment, then the burn',
+     [r['Burned (TDEE)'], burnRows(half)], ['1,824 kcal', ['BMR = 1,672', 'Steps (10,000) = +304',
+       'Total burn before adjustment = 1,976', 'Adjustment = −152', 'Burn = 1,824']]);
+  click(half, '#daySheet .row.burn-adj [data-act="adjInfo"]');
+  const note = half.d.querySelector('#daySheet .row-note.adj-note');
+  eq('the (i) opens what the Adjustment is', [note.hidden, /counted at 50%/.test(T(note))], [false, true]);
+
+  /* 2 Oct at 50%: the parts as shown add to 1,672 + 380 + 249 = 2,301; the
+   * activity 629.61 at half is 314.81, so the burn is 1,986.81 -> 1,987, and
+   * the Adjustment takes the rest: 1,987 - 2,301 = -314. */
+  openDay(half, '2026-10-02');
+  eq('a gym day at 50%: every line adds up, and the burn is the true one', burnRows(half), [
+    'BMR = 1,672', 'Workouts (450, less 70 resting) = +380', 'Steps outside workouts (8,200) = +249',
+    'Total burn before adjustment = 2,301', 'Adjustment = −314', 'Burn = 1,987']);
+  eq('and it adds up', addsUp(burnRows(half)), true);
+  eq('it never mentions Samsung', /samsung/i.test(T(half.d.querySelector('#daySheet'))), false);
   eq('clean', [half.errors, badTokens(half)], [[], []]);
   half.w.close();
 
