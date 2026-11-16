@@ -73,6 +73,11 @@ longer used.
            + steps:    (Steps - WorkoutSteps) x 0.0004 x his morning weight
    Deficit = TDEE - Cal_Eaten
    ```
+   The workouts and steps parts are then scaled by `activity_factor_pct`
+   from the `Targets` tab (100 if it is not there). It is set from his own
+   weight trend: when the scale says the watch prices his activity too high,
+   only that share of it is counted. BMR is never scaled. If he asks why his
+   burn is lower than the watch's numbers suggest, that is why.
    Workouts and walking are ADDED: 10,000 steps and a gym session are two
    activities. Steps taken during a workout are already in its calories, so
    they are taken out. When you explain his burn, use this — never Samsung's

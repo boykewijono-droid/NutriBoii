@@ -65,6 +65,7 @@ var TGT_ROWS = [
   ['fat_red_g',         80, 'g',  'Above this, fat shows RED. A hard line made 72g look as bad as 118g.'],
   ['deficit_goal_pct',  15, '%',  'Planned deficit. Calorie target = the day\'s burn less this %, never below BMR.'],
   ['bodyfat_goal_pct',  15, '%',  'The goal. Drives the "weeks to goal" projection.'],
+  ['activity_factor_pct', 100, '%', 'Share of the workout and step calories to count. The Health Report says what your weight supports.'],
   ['bmr_fallback',    1672, 'kcal', 'Only used if the Baselines tab is empty.']
 ];
 

@@ -446,7 +446,18 @@ function isMorningStamp(v) {
   return +m[1] < 12;
 }
 
+/** How much of the activity burn to count: Targets' activity_factor_pct, 100
+ *  when unset. The watch's workouts and steps are an estimate; his weight is
+ *  the outcome, and the scale check below says what share of them it
+ *  supports. BMR is measured and is never scaled, so a day's burn cannot fall
+ *  below it. Same rule as activityFactor() in sheet/api.gs. */
+function activityFactor(targets) {
+  var pct = targets ? targets.activity_factor_pct : null;
+  return pct != null && pct >= 10 && pct <= 150 ? pct / 100 : 1;
+}
+
 function buildDays(rows, scans, targets, today, scale) {
+  var actK = activityFactor(targets);
   // The BMR a date had: the latest scan on or before it, the oldest for a day
   // before every scan. The same rule as scanBmrOn() in sheet/api.gs.
   var bmrScans = scans.filter(function (s) { return s.bmr != null; });
@@ -498,9 +509,10 @@ function buildDays(rows, scans, targets, today, scale) {
     // dashboard is never wrong, whatever is sitting in those two cells.
     d.stepWeight = weightOn(date);
     var a = dayActivity(d.bmr, d.steps, d.exercise, d.exMin, d.workoutSteps, d.stepWeight);
-    d.activity     = a.total;
-    d.burnWorkouts = a.workouts;
-    d.burnSteps    = a.steps;
+    d.activityRaw  = a.total;                  // as the formula prices it
+    d.activity     = a.total * actK;
+    d.burnWorkouts = a.workouts * actK;
+    d.burnSteps    = a.steps * actK;
     d.outsideSteps = a.outsideSteps;
     d.legacyBurn   = a.legacy;
     if (d.bmr != null) {
@@ -582,6 +594,8 @@ function burnBreakdown(d) {
     if (d.burnWorkouts) parts += ' + workouts ' + nf(Math.round(d.burnWorkouts));
     if (d.burnSteps) parts += ' + steps ' + nf(Math.round(d.burnSteps));
   }
+  var k = activityFactor(M.targets);
+  if (k !== 1 && (d.burnWorkouts || d.burnSteps)) parts += ' <em class="nc">(activity counted at ' + Math.round(k * 100) + '%)</em>';
   return '<div class="row"><span>Burned, built from</span><b>' + parts + '</b></div>';
 }
 
@@ -1599,7 +1613,14 @@ function scaleCheck() {
   var intake = mean(fed.map(function (d) { return d.cal; }));
   var model = mean(fed.filter(function (d) { return d.tdee != null; }).map(function (d) { return d.tdee; }));
   var span = Math.round((parseYMD(end) - x0) / 86400000) + 1;
+  // What share of the formula's activity his weight supports: the burn the
+  // weight implies, less the BMR, over the activity as the formula priced it.
+  var withBurn = fed.filter(function (d) { return d.tdee != null && d.bmr != null; });
+  var rawAct = withBurn.length ? mean(withBurn.map(function (d) { return d.activityRaw || 0; })) : 0;
+  var impliedAct = withBurn.length ? (intake - slope * SCALE_KCAL_PER_KG) - mean(withBurn.map(function (d) { return d.bmr; })) : 0;
+  var fits = rawAct > 0 ? Math.round(Math.max(10, Math.min(150, impliedAct / rawAct * 100))) : null;
   return {
+    fits: fits, inUse: Math.round(activityFactor(M.targets) * 100),
     state: span >= SCALE_MIN_DAYS ? 'ok' : 'early',
     implied: intake - slope * SCALE_KCAL_PER_KG,
     band: 1.96 * se * SCALE_KCAL_PER_KG,
@@ -1632,7 +1653,19 @@ function scaleCheckCell(c) {
       ' over the same ' + c.days + ' days (' + (gap >= 0 ? '+' : '\u2212') + nf(Math.abs(gap)) + '). From ' +
       c.weighIns + ' morning weigh-ins, ' + fmtDay(c.start, { weekday: undefined, day: 'numeric', month: 'short' }) +
       ' to ' + fmtDay(c.end, { weekday: undefined, day: 'numeric', month: 'short' }) + '.' +
-      (c.stopped ? ' No weigh-in has arrived since, so it stops there.' : '') + '</span></div>';
+      (c.stopped ? ' No weigh-in has arrived since, so it stops there.' : '') +
+      calibrationNote(c, within) + '</span></div>';
+}
+
+/** What the activity share is, and what his weight says it should be. Only
+ *  once there are six weeks behind it: before that the range is too wide to
+ *  set anything by. */
+function calibrationNote(c, within) {
+  var using = c.inUse !== 100 ? ' Activity is counted at ' + c.inUse + '% (activity_factor_pct in the Targets tab).' : '';
+  if (c.state !== 'ok' || c.fits == null) return using;
+  if (within) return using + (c.inUse !== 100 ? ' Your weight agrees with that.' : '');
+  return using + ' To match your weight, set activity_factor_pct to <b>' + c.fits + '</b> in the Targets tab' +
+    (c.inUse !== 100 ? ' (now ' + c.inUse + ')' : '') + '.';
 }
 
 /* Data that has quietly stopped arriving. The scale and the InBody reach the

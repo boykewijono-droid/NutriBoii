@@ -74,6 +74,17 @@ TDEE    = BMR
 Deficit = TDEE − Cal_Eaten
 ```
 
+**The activity share.** Workouts and steps are the watch's estimate; weight is
+the outcome. `activity_factor_pct` in the Targets tab (100 when unset) is how
+much of the workouts-plus-steps part is counted, in the API and on the page
+alike. BMR is measured and never scaled, so a day's burn cannot fall below
+it. The scale check on the Health Report works out the share his weight
+supports and names it once there are six weeks of weigh-ins: over 22 Aug to
+15 Nov 2026 the formula averaged 2,152, his weight said 1,975, and the share
+that matches is 62. After changing it, run `recomputeAllDays` once from the
+Apps Script editor to bring the sheet's older rows along; new writes and the
+dashboard use it at once.
+
 - **Workouts and walking are added, not compared.** 10,000 steps and a gym
   session are two activities. The old rule took the larger and threw the other
   away.

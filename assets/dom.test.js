@@ -468,6 +468,48 @@ console.log('\n=== the scale stopped arriving: the check stops with it, and the 
   app.w.close();
 }
 
+console.log('\n=== activity_factor_pct: the activity is scaled to what his weight supports ===');
+{
+  const T50 = 'Key,Value,Unit,Notes\nactivity_factor_pct,50,%,';
+  // 1 Oct: 10,000 steps at that morning's 76.0 kg = 304 of activity, BMR 1,672.
+  //   at 100%: 1,976.   at 50%: 152 -> 1,824, and the BMR is untouched.
+  const full = await boot({ daily: daily(HISTORY.concat([todayRow(900)])), base: BASE, body: BODY });
+  eq('unset, every activity calorie counts', openDay(full, '2026-10-01')['Burned, built from'], 'BMR 1,672 + steps 304');
+  full.w.close();
+  const half = await boot({ daily: daily(HISTORY.concat([todayRow(900)])), base: BASE, body: BODY, targets: T50 });
+  const r = openDay(half, '2026-10-01');
+  eq('at 50, half of it does, and the day says so',
+     [r['Burned (TDEE)'], r['Burned, built from']], ['1,824 kcal', 'BMR 1,672 + steps 152 (activity counted at 50%)']);
+  eq('clean', [half.errors, badTokens(half)], [[], []]);
+  half.w.close();
+
+  /* What the weight supports. Fifty days to yesterday, weight flat at 80.00,
+   * eating 1,822 a day on 5,000 steps: 5000 x 0.0004 x 80 = 160 of activity,
+   * so the formula says 1,832. Flat weight says the burn is what he ate,
+   * 1,822: activity of 150, which is 150 / 160 = 94% of the formula's. */
+  const run = async (targets) => {
+    const rows = [], body = [BODY_HEAD];
+    for (let i = 0; i < 50; i++) {
+      const date = new Date(Date.UTC(2026, 9, 4 - 49 + i)).toISOString().slice(0, 10);
+      rows.push({ date, cal: 1822, steps: 5000, bmr: 1672 });
+      body.push(bodyRow(date, '80.00', '7:30 AM'));
+    }
+    const app = await boot({ daily: daily(rows), base: BASE, body: body.join('\n'), targets });
+    click(app, '[data-view="trends"]');
+    const c = [...app.d.querySelectorAll('#view-trends .cell')].find(x => /Your weight says/.test(T(x)));
+    const out = T(c.querySelector('.sub'));
+    app.w.close();
+    return out;
+  };
+  eq('the check names the setting that would match his weight', await run(),
+     'Outside the range: the formula is running HIGH. NutriBoii’s burn averaged 1,832 over the same 50 days (+10). ' +
+     'From 50 morning weigh-ins, 16 Aug to 4 Oct. To match your weight, set activity_factor_pct to 94 in the Targets tab.');
+  // 160 x 0.94 = 150.4 -> 1,822, exactly what the weight says
+  eq('and once set, says the weight agrees', await run('Key,Value,Unit,Notes\nactivity_factor_pct,94,%,'),
+     'Inside the range: the formula stands. NutriBoii’s burn averaged 1,822 over the same 50 days (+0). ' +
+     'From 50 morning weigh-ins, 16 Aug to 4 Oct. Activity is counted at 94% (activity_factor_pct in the Targets tab). Your weight agrees with that.');
+}
+
 console.log('\n=== scans: asked about after three weeks, quiet before; fresh data warns of nothing ===');
 {
   // BASE: the newest scan is 4 Oct, yesterday. BODY: a weigh-in this morning.

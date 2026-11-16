@@ -893,6 +893,47 @@ console.log('\n=== inbox: no token needed, a pasted link works, an empty inbox i
      /must be a number/.test(inboxRows(sheets)[1][2]), JSON.stringify(inboxRows(sheets)[1]));
 }
 
+/* ---- the activity share: Targets' activity_factor_pct ------------------- */
+console.log('\n=== activity_factor_pct scales the activity burn, never the BMR ===');
+{
+  // BMR 1,685 from the scan, 10,000 steps priced at the scan's 75.4 kg:
+  //   10000 x 0.0004 x 75.4 = 301.6 of activity -> burn 1,987 at 100%
+  //   at 60%: 301.6 x 0.6 = 181.0             -> burn 1,866
+  const world = (pct) => {
+    const w = setup();
+    call(w.sheets, w.store, { token: 'TESTTOKEN', action: 'scan', format: 'json',
+                              date: '2026-10-17', weight: '75.4', bodyFat: '19.2', bmr: '1685' });
+    if (pct != null) {
+      w.sheets['Targets'] = makeSheet(['Key', 'Value', 'Unit', 'Notes']);
+      w.sheets['Targets'].getRange(2, 1, 1, 4).setValues([['activity_factor_pct', pct, '%', '']]);
+    }
+    return w;
+  };
+  const day = (w, date) => asJson(call(w.sheets, w.store, { token: 'TESTTOKEN', action: 'log', format: 'json',
+                                                             date, calories: '2000', steps: '10000' }));
+  ok('unset: every activity calorie counts (1987)', day(world(null), '2026-10-31').row.TDEE === 1987);
+  const w60 = world(60), r = day(w60, '2026-10-31');
+  ok('at 60 the activity is scaled and the BMR is not (1866)', r.row.TDEE === 1866, 'TDEE=' + r.row.TDEE);
+  ok('the deficit follows', r.row.Deficit === 1866 - 2000, 'Deficit=' + r.row.Deficit);
+  ok('and so does the reply Chat reads back', /burn 1866/.test(r.summary), r.summary);
+  ok('a slip like 500 is ignored, not obeyed', day(world(500), '2026-10-31').row.TDEE === 1987);
+  ok('so is 0: the burn never loses its activity by a typo', day(world(0), '2026-10-31').row.TDEE === 1987);
+
+  // Days written before the setting changed keep their old burn until
+  // recomputeAllDays is run once from the editor.
+  const w = world(null);
+  day(w, '2026-10-30'); day(w, '2026-10-31');
+  w.sheets['Targets'] = makeSheet(['Key', 'Value', 'Unit', 'Notes']);
+  w.sheets['Targets'].getRange(2, 1, 1, 4).setValues([['activity_factor_pct', 60, '%', '']]);
+  ok('old rows are not moved by the setting alone', rowOf(w.sheets, 'Daily Log', '2026-10-30')[10] === 1987);
+  call(w.sheets, w.store, {}, 'recomputeAllDays');
+  ok('recomputeAllDays brings every row along',
+     rowOf(w.sheets, 'Daily Log', '2026-10-30')[10] === 1866 && rowOf(w.sheets, 'Daily Log', '2026-10-31')[10] === 1866,
+     rowOf(w.sheets, 'Daily Log', '2026-10-30')[10] + ' / ' + rowOf(w.sheets, 'Daily Log', '2026-10-31')[10]);
+  ok('and touches nothing but TDEE and Deficit', rowOf(w.sheets, 'Daily Log', '2026-10-30')[2] === 2000 &&
+     rowOf(w.sheets, 'Daily Log', '2026-10-30')[6] === 10000 && rowOf(w.sheets, 'Daily Log', '2026-10-30')[11] === 1866 - 2000);
+}
+
 console.log('\n' + '='.repeat(46));
 console.log('  ' + pass + ' passed, ' + fail + ' failed');
 console.log('='.repeat(46));

@@ -514,6 +514,22 @@ function editMeal(p) {
   }
 }
 
+/** Run ONCE from the editor after changing activity_factor_pct: rewrites
+ *  TDEE and Deficit on every Daily Log row, so the whole history is on the
+ *  new figure. New writes use it anyway; this only brings old rows along.
+ *  Nothing else in a row is touched. */
+function recomputeAllDays() {
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(20000)) throw new Error('Sheet busy, try again.');
+  try {
+    var sh = mustGet(DAILY);
+    ensureDailyHeaders(sh);
+    var last = sh.getLastRow();
+    for (var row = 2; row <= last; row++) writeDerived(sh, row);
+    Logger.log('Recomputed ' + Math.max(0, last - 1) + ' days at activity factor ' + activityFactor() + '.');
+  } finally { lock.releaseLock(); }
+}
+
 /* --- the Inbox: Chat writes a request row, a trigger runs it ----------- */
 /* Claude Chat cannot call this API itself: its fetch tool refuses any
  * address it built rather than one it was shown (31 Oct 2026), so every log
@@ -719,15 +735,32 @@ function findMeal(lines, needle, date) {
 
 /** The fat limit from the Targets tab, as the dashboard reads it; 70 g if
  *  the tab or the key is missing. */
-function fatLimit() {
+function fatLimit() { return targetNum('fat_ceiling_g', 70); }
+
+/** A number from the Targets tab, as the dashboard reads it; the default if
+ *  the tab or the key is missing or not a number. */
+function targetNum(key, dflt) {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Targets');
   if (sh && sh.getLastRow() >= 2) {
     var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
     for (var i = 0; i < vals.length; i++) {
-      if (String(vals[i][0]).trim() === 'fat_ceiling_g' && toNum(vals[i][1]) != null) return toNum(vals[i][1]);
+      if (String(vals[i][0]).trim() === key && toNum(vals[i][1]) != null) return toNum(vals[i][1]);
     }
   }
-  return 70;
+  return dflt;
+}
+
+/** How much of the activity burn to count: Targets' activity_factor_pct, 100
+ *  when unset. The formula prices workouts and steps from the watch, and over
+ *  12 weeks (22 Aug - 15 Nov 2026) his weight said it priced them too high:
+ *  the logged deficits predicted 1.3 kg lost and the scale did not move. So
+ *  the activity part is scaled to what the scale supports. The BMR is
+ *  measured and is left alone, so a day's burn can never fall below it.
+ *  Anything outside 10-150 is a typing slip and is ignored. Same rule as
+ *  activityFactor() in assets/app.js. */
+function activityFactor() {
+  var pct = targetNum('activity_factor_pct', 100);
+  return pct >= 10 && pct <= 150 ? pct / 100 : 1;
 }
 
 /** After a meal comes out or shrinks, a "fat over from ..." line can be left
@@ -1531,7 +1564,7 @@ function writeDerived(sh, row) {
   if (!haveNum(bmr)) { sh.getRange(row, 11, 1, 2).setValue(''); return; }
   var a = dayActivity(Number(bmr), numOrNull(v[6]), numOrNull(v[8]), numOrNull(v[14]),
                       numOrNull(v[15]), stepWeight(cellDate(v[0])));
-  var tdee = Math.round(Number(bmr) + a.total);
+  var tdee = Math.round(Number(bmr) + a.total * activityFactor());
   sh.getRange(row, 11).setValue(tdee);
   sh.getRange(row, 12).setValue(haveNum(cal) ? tdee - Number(cal) : '');
 }
@@ -1739,7 +1772,7 @@ function summarise(row) {
   if (bmr != null) {
     var a = dayActivity(Number(bmr), numOrNull(row.Steps), numOrNull(row.ExerciseCal),
                         numOrNull(row.ExerciseMin), numOrNull(row.WorkoutSteps), stepWeight(row.Date));
-    var tdee = Math.round(Number(bmr) + a.total);
+    var tdee = Math.round(Number(bmr) + a.total * activityFactor());
     bits.push('burn ' + tdee);
     if (cal != null) {
       var def = tdee - cal;
