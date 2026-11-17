@@ -1238,21 +1238,18 @@ function renderToday() {
   // Today is always the running card: it closes itself at midnight, so the
   // "complete" version could never appear here. A row holding only synced
   // activity still gets it; only a missing row falls back to the void card.
+  // Protein, fat and carbs live inside it.
   h += d.logged ? heroProgress(d, t) : heroVoid(d);
 
-  // The finished day, in one line, so closing the day still feels like
-  // something. Tapping it opens that day in full.
-  h += lastDayStrip(t);
-  h += staleNotes('weigh');
-
-  // The two numbers that actually predict progress, given side by side.
+  // Below it, three columns on a wide screen and one stack on a phone:
+  // yesterday and the trend, then activity, then the day's meals.
   var roll = rollingDeficit(M.today, CFG.rollingWindowDays || 7);
   var proj = projection(t);
-  h += '<div class="grid g2">' + rollingCell(roll) + projectionCell(proj, t) + '</div>';
+  h += '<div class="today-cols"><div class="today-col">' +
+    lastDayStrip(t) + staleNotes('weigh') +
+    '<div class="grid g2">' + rollingCell(roll) + projectionCell(proj, t) + '</div></div>';
 
-  h += macroBlock(d, t);
-
-  h += '<div class="sec"><div class="sec-head"><h2>Activity</h2><span class="lbl">Samsung Health</span></div>' +
+  h += '<div class="today-col"><div class="sec"><div class="sec-head"><h2>Activity</h2><span class="lbl">Samsung Health</span></div>' +
        '<div class="grid g4">' +
          cell('Steps', d.steps == null ? null : nf(d.steps), null, null, d.inProgress && d.steps != null ? 'so far today' : null) +
          cell('Workout', d.exMin == null ? null : nf(d.exMin), 'min', null,
@@ -1264,14 +1261,42 @@ function renderToday() {
            return cell('Activity', a && a.level, null, a && a.level === 'High' ? 'good' : '',
                        a ? (d.inProgress ? 'So far today · ' : '') + a.why : null);
          })() +
-       '</div></div>';
+       '</div></div></div>';
 
-  if (d.notes) {
-    h += '<div class="sec"><div class="note' + (d.flagged ? ' warn' : '') + '">' +
-         '<span class="lbl">Note</span>' + noteHtml(d.notes) + diaryCheckLine(d) + '</div></div>';
-  }
+  h += '<div class="today-col">' + (d.notes
+    ? '<div class="sec"><div class="sec-head"><h2>Meals</h2><span class="lbl">kcal</span></div>' +
+      mealsHtml(d.notes) + diaryCheckLine(d) + '</div>'
+    : '') + '</div></div>';
   host.innerHTML = h;
   paintHero(host);
+}
+
+/** The day's meals as rows: the food and its calories, then P, F and C. Lines
+ *  written before 31 Oct 2026 carry calories only and show no macros. Anything
+ *  that is not a meal bullet (the "fat over from ..." line) stays as a line. */
+function mealsHtml(notes) {
+  var lines = String(notes == null ? '' : notes).split(/\r?\n/).filter(function (x) { return x.trim(); });
+  var rows = '', extra = '';
+  lines.forEach(function (l) {
+    var b = l.match(/^\s*[-•*]\s*(.*)$/);
+    if (!b) { extra += '<div class="meal-line">' + esc(l) + '</div>'; return; }
+    var body = b[1], time = '', tail = body.match(/\s*\((\d+(?:\.\d+)?)\s*kcal((?:[,\s]*[PFC]\d+(?:\.\d+)?)*)\s*\)\s*$/i);
+    var kcal = null, mac = {};
+    if (tail) {
+      kcal = Number(tail[1]);
+      body = body.slice(0, tail.index);
+      (tail[2].match(/[PFC]\d+(?:\.\d+)?/gi) || []).forEach(function (x) { mac[x.charAt(0).toUpperCase()] = Number(x.slice(1)); });
+    }
+    var tm = body.match(/^(\d{1,2}:\d{2}\s*[AP]M)\s+/i);
+    if (tm) { time = tm[1]; body = body.slice(tm[0].length); }
+    var has = mac.P != null || mac.F != null || mac.C != null;
+    rows += '<div class="meal"><div class="meal-n">' + esc(body.trim()) + (time ? '<small>' + esc(time) + '</small>' : '') + '</div>' +
+      '<div class="meal-k">' + (kcal == null ? '—' : nf(kcal)) + '</div>' +
+      (has ? '<div class="meal-m"><span>P <b>' + (mac.P == null ? '—' : nf(mac.P)) + '</b></span><span>F <b>' +
+        (mac.F == null ? '—' : nf(mac.F)) + '</b></span><span>C <b>' + (mac.C == null ? '—' : nf(mac.C)) + '</b></span></div>' : '') +
+      '</div>';
+  });
+  return (rows ? '<div class="meals-box">' + rows + '</div>' : '') + extra;
 }
 
 /** The day-type chip, dotted when it was worked out rather than logged. */
@@ -1310,7 +1335,7 @@ function lastDayStrip(t) {
  *  held back until it is closed. */
 /** Remembered across the 10-minute auto-refresh, so an open panel does not
  *  snap shut while it is being read. */
-var heroOpen = false;
+var heroOpen = !!(window.matchMedia && window.matchMedia('(min-width:900px)').matches);
 
 /** The clock on the card: he checks this after eating, and "22:05" tells him
  *  which numbers are nearly final and which have hours left to move. */
@@ -1383,14 +1408,57 @@ function heroDetails(d, t) {
   return rows;
 }
 
-/** One macro bar: eaten against the number that matters for it. */
-function heroMacro(name, have, limit, over) {
-  if (have == null || limit == null) return '';
-  var w = clamp(have / limit * 100, 0, 100).toFixed(1);
-  var cls = over ? (have > limit ? 'bad' : '') : (have >= limit ? 'good' : '');
-  return '<div class="hm"><div class="hm-top"><span>' + esc(name) + '</span>' +
-    '<b class="' + cls + '">' + nf(Math.round(have)) + '/' + nf(limit) + ' g</b></div>' +
-    '<div class="hm-track"><i class="' + cls + '" style="width:0%" data-w="' + w + '"></i></div></div>';
+/** One macro row inside the card: the number, a bar with its marks, and one
+ *  plain sentence. `marks` are [value, dashed] pairs on the same scale as max. */
+function heroMacroRow(label, have, of, max, tone, marks, words, quiet) {
+  var w = have == null ? 0 : clamp(have / max * 100, 0, 100);
+  var ticks = marks.map(function (m) {
+    return '<s class="' + (m[1] ? 'dash' : '') + '" style="left:' + clamp(m[0] / max * 100, 0, 100).toFixed(1) + '%"></s>';
+  }).join('');
+  return '<div class="hm"><div class="hm-top"><span>' + esc(label) + '</span>' +
+    '<b class="' + tone + '">' + (have == null ? '—' : nf(Math.round(have))) + '<em>' + esc(of) + '</em></b></div>' +
+    '<div class="hm-track"><i class="' + (quiet ? 'quiet' : tone) + '" data-w="' + w.toFixed(1) + '"></i>' + ticks + '</div>' +
+    '<div class="hm-words">' + esc(words) + '</div></div>';
+}
+
+/** Protein, fat and carbs, each with its sentence. Same rules as the old
+ *  Macros block: protein short is a warning, fat over names what drove it. */
+function heroMacros(d, t) {
+  if (!d.hasIntake) return '';
+  var floor = t.protein_floor_g, ceil = t.fat_ceiling_g;
+  var goal = t.protein_goal_g == null ? floor : t.protein_goal_g;
+  var red = t.fat_red_g == null ? ceil : t.fat_red_g;
+  var out = '';
+
+  var pMax = Math.max(goal * 1.25, d.protein || 0) || 1;
+  var pTone = d.proteinWarn ? 'bad' : d.proteinLow ? 'caution' : d.protein != null ? 'good' : '';
+  var pWords = d.protein == null ? 'Not logged.'
+    : d.proteinWarn ? nf(floor - d.protein) + ' g short of the ' + nf(floor) + ' g target — on a cut this is where muscle goes.'
+    : d.proteinLow ? nf(floor - d.protein) + ' g to go to the ' + nf(floor) + ' g target. The day is still open.'
+    : d.protein > goal ? nf(d.protein - floor) + ' g above the target.'
+    : 'Within the ' + nf(floor) + '–' + nf(goal) + ' g target range.';
+  out += heroMacroRow('Protein', d.protein, ' / ' + nf(floor) + ' g', pMax, pTone,
+    goal > floor ? [[floor, false], [goal, true]] : [[floor, false]], pWords, !pTone);
+
+  var fMax = Math.max(red * 1.4, d.fat || 0) || 1;
+  var fTone = d.fatState === 'over' ? 'bad' : d.fatState === 'caution' ? 'caution' : '';
+  var drivers = d.drivers && d.drivers.length ? d.drivers.join(', ') : '';
+  var fWords = d.fat == null ? 'Not logged.'
+    : d.fatState === 'over' ? nf(d.fatOverBy) + ' g over the ' + nf(ceil) + ' g limit' + (drivers ? ' — driven by: ' + drivers : ' — no contributing foods named in the note') + '.'
+    : d.fatState === 'caution' ? nf(d.fatOverBy) + ' g over the ' + nf(ceil) + ' g limit, still under ' + nf(red) + ' g' + (drivers ? ' — from: ' + drivers : '') + '.'
+    : nf(ceil - d.fat) + ' g left before the limit.';
+  out += heroMacroRow('Fat', d.fat, ' / ' + nf(ceil) + ' g', fMax, fTone,
+    red > ceil ? [[ceil, false], [red, true]] : [[ceil, false]], fWords, !fTone);
+
+  out += heroMacroRow('Carbs', d.carbs, ' g', 260, '', [],
+    'No limit — carbs fill whatever calories protein and fat leave.', true);
+  return out;
+}
+
+function heroTank(cls, pct, label, value, sub, subCls) {
+  return '<div class="tank ' + cls + '"><div class="tank-box"><i style="width:0%" data-w="' + pct.toFixed(1) + '"></i></div>' +
+    '<div class="tank-lab"><span>' + esc(label) + '</span>' + (value == null ? '' : '<b>' + esc(value) + '</b>') + '</div>' +
+    '<div class="tank-sub' + (subCls ? ' ' + subCls : '') + '">' + esc(sub) + '</div></div>';
 }
 
 function heroProgress(d, t) {
@@ -1399,64 +1467,21 @@ function heroProgress(d, t) {
   var head = heroHead(d, t);
   var noForecast = (burn == null || plan == null);
 
-  // The bar carries the whole day at one scale: how much has been eaten, and
-  // where the plan and the burn fall. It fills with FOOD, never with
-  // progress — a bar that filled with deficit would sit full before
-  // breakfast, eating nothing being the largest deficit there is.
+  // Three tanks, in the order the day crosses them: the plan, the gap from
+  // plan to burn, and anything past the burn. Each says "x of y", so the
+  // evening's last 160 kcal get a third of the width, not a sliver.
   var bmr = d.bmr == null ? 0 : Math.round(d.bmr);
-  var top = noForecast ? Math.max(bmr, eaten) * 1.18 : Math.max(burn, eaten) * 1.06;
-  if (!top) top = 1;
-  var pc = function (v) { return clamp(v / top * 100, 0, 100); };
   var planAt = noForecast ? bmr : plan;
-  var s1 = Math.min(eaten, planAt);
-  var s2 = noForecast ? 0 : Math.min(Math.max(eaten - plan, 0), Math.max(burn - plan, 0));
-  var s3 = noForecast ? 0 : Math.max(eaten - burn, 0);
-
-  // The marks under the bar: where the food reached, where the plan is, and
-  // where the day's burn ends. EATEN belongs here rather than behind the "?"
-  // — it is the number checked most often, and the bar was drawing it as a
-  // length with nothing to read.
-  //
-  // Any two labels closer than 26% of the width would overlap, so they drop
-  // to the next line instead. On his data that happens most days: the plan
-  // sits on the BMR floor with the burn barely above it.
-  var ticks = [];
-  var anchor = function (x) { return x < 14 ? 'translateX(0)' : x > 86 ? 'translateX(-100%)' : 'translateX(-50%)'; };
-  if (d.cal != null) ticks.push({ at: pc(eaten), name: 'EATEN', value: nf(eaten) });
-  if (noForecast) {
-    if (bmr) ticks.push({ at: pc(bmr), name: 'BMR', value: nf(bmr) });
-  } else {
-    ticks.push({ at: pc(plan), name: 'PLAN', value: nf(plan) });
-    ticks.push({ at: pc(burn), name: 'BURN', value: (d.inProgress ? '~' : '') + nf(burn) });
+  var tanks = '';
+  var t1Pct = planAt > 0 ? clamp(Math.min(eaten, planAt) / planAt * 100, 0, 100) : 0;
+  tanks += heroTank('t1' + (noForecast ? ' floor' : ''), t1Pct, noForecast ? 'BMR' : 'Plan', nf(planAt),
+    eaten >= planAt && planAt > 0 ? 'full' : nf(eaten) + ' of ' + nf(planAt));
+  if (!noForecast) {
+    var cap = Math.max(burn - plan, 0), over = eaten > burn;
+    tanks += heroTank('t2', cap > 0 ? clamp((eaten - plan) / cap * 100, 0, 100) : 0, 'Burn',
+      (d.inProgress ? '~' : '') + nf(burn), nf(clamp(eaten - plan, 0, cap)) + ' of ' + nf(cap));
+    tanks += heroTank('t3', over ? 100 : 0, 'Over', null, over ? '+' + nf(Math.round(eaten - burn)) : '0', over ? 'bad' : '');
   }
-  ticks.sort(function (a, b) { return a.at - b.at; });
-
-  // Pack them onto lines by where each label actually STARTS and ENDS.
-  //
-  // The first version compared centres and allowed anything 26% apart to
-  // share a line. That is wrong for the labels at the ends: one anchored to
-  // the right extends a whole label-width to its LEFT, so "EATEN 1,300" at
-  // 67% and "BURN ~1,760" at 94% are 27 points apart and still overlap.
-  //
-  // Widths are estimated rather than measured, because the markup is built
-  // as a string before it is in the document: 11px IBM Plex Mono advances
-  // about 6.6px per character, and the narrowest card this runs on is a
-  // 390px phone with roughly 322px of usable width. A wider screen only
-  // makes the labels relatively narrower, so the phone is the worst case.
-  var PC = 100 / 322, CHAR = 6.6 * PC, GAP = 5 * PC;   // gap: the label's own margin
-  ticks.forEach(function (k) {
-    var w = (String(k.name).length + String(k.value).length) * CHAR + GAP;
-    k.l = k.at < 14 ? k.at : k.at > 86 ? k.at - w : k.at - w / 2;
-    k.r = k.l + w;
-  });
-  var rowEnd = [];
-  ticks.forEach(function (k) {
-    var row = 0;
-    while (rowEnd[row] != null && k.l < rowEnd[row] + GAP) row++;
-    rowEnd[row] = k.r;
-    k.top = row * 16;
-  });
-  var tickH = rowEnd.length * 16;
 
   var note = '';
   // An unstarted day says so first: why the plan is what it is matters
@@ -1467,45 +1492,31 @@ function heroProgress(d, t) {
   else if (burned != null) note = '≈' + nf(burned) + ' kcal burned so far';
 
   var details = heroDetails(d, t);
+  var macros = heroMacros(d, t);
 
-  var h = '<div class="hero">' +
+  return '<div class="hero">' +
     '<div class="hero-top">' + chip(d) +
       (d.steps == null ? '' : '<span class="ht-k">' + nf(d.steps) + ' steps</span>') +
       '<span class="ht-sp"></span><span class="ht-k">' + (d.inProgress ? heroClock() : 'done') + '</span>' +
     '</div>' +
-
-    '<div class="hero-num ' + head.cls + '">' +
-      '<b><span data-count="' + Math.round(head.value) + '">' + nf(Math.round(head.value)) + '</span></b>' +
-      '<span class="u">kcal</span>' +
+    '<div class="hero-main"><div class="hero-left">' +
+      '<div class="hero-head"><div>' +
+        '<div class="hero-num ' + head.cls + '"><b><span data-count="' + Math.round(head.value) + '">' +
+          nf(Math.round(head.value)) + '</span></b></div>' +
+        '<div class="hero-cap ' + head.cls + '">' + esc(head.caption) + '</div></div>' +
+        (head.past == null ? '' :
+          '<div class="hero-aside ' + head.cls + '"><b>+' + nf(head.past) + '</b><span>past plan</span></div>') +
+      '</div>' +
+      '<div class="hero-eaten"><span>Eaten<b>' + nf(eaten) + '</b></span><span>kcal</span></div>' +
+      '<div class="tanks">' + tanks + '</div>' +
     '</div>' +
-    '<div class="hero-cap ' + head.cls + '">' + head.caption +
-      (head.past == null ? '' : '<span class="hero-past">' + nf(head.past) + ' past plan</span>') +
+    (macros ? '<div class="hero-right">' + macros + '</div>' : '') +
     '</div>' +
-
-    '<div class="hero-bar">' +
-      '<i class="s1" style="width:0%" data-w="' + pc(s1).toFixed(1) + '"></i>' +
-      '<i class="s2" style="left:' + pc(planAt).toFixed(1) + '%;width:0%" data-w="' + pc(s2).toFixed(1) + '"></i>' +
-      (noForecast ? '' : '<i class="s3" style="left:' + pc(burn).toFixed(1) + '%;width:0%" data-w="' + pc(s3).toFixed(1) + '"></i>') +
-      ticks.map(function (k) { return '<s style="left:' + k.at.toFixed(1) + '%"></s>'; }).join('') +
-    '</div>' +
-    '<div class="hero-ticks" style="height:' + tickH + 'px">' +
-      ticks.map(function (k) {
-        return '<span style="left:' + k.at.toFixed(1) + '%;top:' + k.top + 'px;transform:' + anchor(k.at) + '">' +
-          '<i>' + k.name + '</i>' + esc(k.value) + '</span>';
-      }).join('') +
-    '</div>' +
-
-    (function () {
-      var m = heroMacro('PROTEIN', d.protein, t.protein_floor_g, false) +
-              heroMacro('FAT', d.fat, t.fat_ceiling_g, true);
-      return m ? '<div class="hero-macros">' + m + '</div>' : '';
-    })() +
-
     '<div class="hero-foot">' +
-      '<span class="ht-k">' + esc(note) + '</span><span class="ht-sp"></span>' +
+      '<span class="ht-k">' + esc(note) + '</span>' +
       '<button type="button" class="hero-why" data-act="why" aria-expanded="' + (heroOpen ? 'true' : 'false') +
         '" aria-controls="heroWhy" aria-label="' + (heroOpen ? 'Hide' : 'Show') + ' how these numbers are worked out">' +
-        '<i>' + (heroOpen ? '\u00d7' : '?') + '</i></button>' +
+        '<i>?</i></button>' +
     '</div>' +
     '<div class="hero-panel' + (heroOpen ? ' open' : '') + '" id="heroWhy">' +
       '<div class="hp-in">' + details.map(function (r) {
@@ -1515,7 +1526,6 @@ function heroProgress(d, t) {
       }).join('') + '</div>' +
     '</div>' +
   '</div>';
-  return h;
 }
 
 /** Estimated calories burned from midnight until now: resting burn for the
@@ -1551,8 +1561,6 @@ function toggleHeroWhy(btn) {
   panel.style.maxHeight = heroOpen ? (panel.firstChild.offsetHeight + 4) + 'px' : '0px';
   btn.setAttribute('aria-expanded', heroOpen ? 'true' : 'false');
   btn.setAttribute('aria-label', (heroOpen ? 'Hide' : 'Show') + ' how these numbers are worked out');
-  var glyph = btn.querySelector('i');
-  if (glyph) glyph.textContent = heroOpen ? '\u00d7' : '?';
 }
 
 function paintHero(root) {

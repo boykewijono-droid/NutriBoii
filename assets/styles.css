@@ -177,95 +177,141 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
 .chip.Gym{font-weight:600}
 
 /* ======================================================================
-   The Today hero, from the Claude Design file. It carries its own palette
-   and display face rather than the page's: chosen deliberately, so the rest
-   of the page does not match it yet.
+   The Today hero: design 1c, "Tanks". An inverted slab (dark on the light
+   theme, light on the dark one) so the answer sits apart from a page reduced
+   to rules. Plan, burn and "over" are three fixed-width tanks that fill in
+   turn, so the 160 kcal that matter in the evening get a third of the width
+   instead of 8% of a day-long bar.
 
-   The bar fills with FOOD, never with "progress" — a bar filled by deficit
+   The tanks fill with FOOD, never with "progress" - a tank filled by deficit
    would sit full before breakfast, eating nothing being the largest deficit
    there is.
    ====================================================================== */
 .hero{
-  --h-card:#ffffff; --h-fg:#191b14; --h-dim:#5d6157; --h-line:#e3e4dc; --h-track:#eceee5;
-  --h-good:#4c7300; --h-good-fill:#a8d63c;
-  --h-amber:#845400; --h-amber-fill:#f2b23f;
-  --h-bad:#ae2d19;   --h-bad-fill:#ff7d68;
-  --h-face:"Archivo",Helvetica,Arial,sans-serif;
-  background:var(--h-card);border:1px solid var(--h-line);border-radius:20px;
-  padding:18px 18px 14px;color:var(--h-fg);font-family:var(--h-face);
+  --h-bg:#1A1916; --h-fg:#EDE9DF; --h-dim:#A8A59B; --h-line:#3A3830; --h-track:#2B2924;
+  --h-good:#B4D336; --h-amber:#E0B25A; --h-bad:#E8836B;
+  --h-fill-good:#B4D336; --h-fill-amber:#C8962F; --h-fill-bad:#C9573E;
+  background:var(--h-bg);color:var(--h-fg);padding:22px;
+  display:flex;flex-direction:column;gap:14px;font-family:var(--f-mono);line-height:1.3;
 }
 :root[data-theme="dark"] .hero{
-  --h-card:#181a16; --h-fg:#f2f3ec; --h-dim:#9ba095; --h-line:#2c2f28; --h-track:#24271f;
-  --h-good:#c6e75c; --h-good-fill:#c6e75c;
-  --h-amber:#f5bb52; --h-amber-fill:#f5bb52;
-  --h-bad:#ff8a75;   --h-bad-fill:#ff8a75;
+  --h-bg:#F4F1E8; --h-fg:#16150F; --h-dim:#5D594E; --h-line:#CFC8B6; --h-track:#DDD6C6;
+  --h-good:#4F5F18; --h-amber:#7A530C; --h-bad:#A83A23;
+  --h-fill-good:#B4D336; --h-fill-amber:#C8962F; --h-fill-bad:#C9573E;
 }
 
-.hero-top{display:flex;align-items:center;gap:8px}
+.hero-top{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--h-dim)}
 .hero-top .chip{font-family:var(--f-mono);font-size:11px;font-weight:600;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--h-fg);border:1px solid var(--h-line);border-radius:999px;padding:5px 11px}
-.hero-top .chip.auto{border-style:dashed}
+  text-transform:uppercase;color:var(--h-fg);border:1px dotted var(--h-fg);border-radius:0;padding:4px 8px}
+.hero-top .chip.auto{border-style:dotted}
+.hero-top .chip.Treat{border-color:var(--h-good);color:var(--h-good)}
 .ht-k{font-family:var(--f-mono);font-size:11px;color:var(--h-dim)}
+.hero-top .ht-k:last-child{color:var(--h-fg);font-weight:600}
 .ht-sp{flex:1}
 
-.hero-num{display:flex;align-items:flex-end;gap:10px;margin:18px 0 2px;color:var(--h-fg)}
-.hero-num b{font-size:clamp(46px,13vw,62px);line-height:.86;font-weight:700;letter-spacing:-.045em;
-  font-variant-numeric:tabular-nums}
-.hero-num .u{font-family:var(--f-mono);font-size:12px;font-weight:600;padding-bottom:6px}
-.hero-num b.words{font-size:clamp(26px,6.4vw,38px);line-height:1.1;letter-spacing:-.02em}
-.hero-num.good{color:var(--h-good)}
-.hero-num.caution{color:var(--h-amber)}
-.hero-num.bad{color:var(--h-bad)}
+.hero-main{display:flex;flex-wrap:wrap;gap:20px 40px}
+.hero-left{flex:1.25 1 290px;min-width:0}
+.hero-right{flex:1 1 270px;min-width:0;display:flex;flex-direction:column;gap:12px;justify-content:flex-end}
 
-.hero-cap{font-family:var(--f-mono);font-size:11px;font-weight:600;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--h-dim);margin-bottom:20px}
-/* how far past the plan: "45 left before even" alone reads like permission */
-.hero-past{color:var(--h-fg);margin-left:8px;padding-left:8px;border-left:1px solid var(--h-line)}
+.hero-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.hero-num b{display:block;font-family:var(--f-display);font-size:clamp(68px,22vw,96px);font-weight:500;
+  line-height:.84;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.hero-num b.words{font-size:clamp(30px,8vw,38px);line-height:1.08;letter-spacing:-.015em}
+.hero-num.good,.hero-aside.good{color:var(--h-good)}
+.hero-num.caution,.hero-aside.caution{color:var(--h-amber)}
+.hero-num.bad,.hero-aside.bad{color:var(--h-bad)}
+.hero-cap{font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-top:10px;
+  color:var(--h-dim)}
+.hero-cap.good{color:var(--h-good)} .hero-cap.caution{color:var(--h-amber)} .hero-cap.bad{color:var(--h-bad)}
+.hero-aside{text-align:right}
+.hero-aside b{display:block;font-family:var(--f-display);font-size:40px;font-weight:500;line-height:.9;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.hero-aside span{display:block;font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  margin-top:10px}
 
-.hero-bar{position:relative;height:16px;border-radius:5px;background:var(--h-track);overflow:hidden}
-.hero-bar i{position:absolute;top:0;bottom:0;transition:width .85s var(--ease)}
-.hero-bar .s1{left:0;background:var(--h-good-fill)}
-.hero-bar .s2{background:var(--h-amber-fill)}
-.hero-bar .s3{background:var(--h-bad-fill)}
-.hero-bar s{position:absolute;top:0;bottom:0;width:2px;background:var(--h-card);opacity:.95;
-  text-decoration:none}
+.hero-eaten{display:flex;justify-content:space-between;align-items:baseline;margin-top:18px;font-size:10.5px;
+  font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--h-dim)}
+.hero-eaten b{color:var(--h-fg);font-weight:600;font-size:13px;letter-spacing:0;margin-left:6px}
 
-.hero-ticks{position:relative;margin-top:7px}
-.hero-ticks span{position:absolute;white-space:nowrap;font-family:var(--f-mono);font-size:11px;
-  color:var(--h-fg);font-weight:600}
-.hero-ticks i{font-style:normal;letter-spacing:.1em;color:var(--h-dim);font-weight:400;margin-right:5px}
+.tanks{display:flex;gap:6px;margin-top:8px;font-size:10.5px}
+.tank{min-width:0}
+.tank.t1{flex:5 1 0} .tank.t2{flex:3.4 1 0} .tank.t3{flex:1.5 1 0;min-width:48px}
+.tank-box{height:40px;border:1.5px solid var(--h-fg);position:relative}
+.tank.t3 .tank-box{border-style:dashed}
+.tank-box i{position:absolute;left:0;top:0;bottom:0;width:0;transition:width .85s var(--ease)}
+.tank.t1 i{background:var(--h-fill-good)} .tank.t1.floor i{background:var(--h-dim)}
+.tank.t2 i{background:var(--h-fill-amber)} .tank.t3 i{background:var(--h-fill-bad)}
+.tank-lab{display:flex;justify-content:space-between;gap:6px;margin-top:6px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--h-dim)}
+.tank-lab b{color:var(--h-fg);font-weight:600;letter-spacing:0;font-size:12px}
+.tank-sub{margin-top:3px;color:var(--h-dim);font-size:11.5px}
+.tank-sub.bad{color:var(--h-bad);font-weight:600}
 
-.hero-macros{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
-.hm-top{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;
-  color:var(--h-dim);margin-bottom:5px;letter-spacing:.1em}
-.hm-top b{font-weight:600;letter-spacing:0;color:var(--h-dim)}
-.hm-top b.good{color:var(--h-good)}
-.hm-top b.bad{color:var(--h-bad)}
-.hm-track{height:4px;border-radius:2px;background:var(--h-track);overflow:hidden}
-.hm-track i{display:block;height:100%;background:var(--h-dim);transition:width .85s var(--ease)}
-.hm-track i.good{background:var(--h-good-fill)}
-.hm-track i.bad{background:var(--h-bad-fill)}
+.hm-top{display:flex;justify-content:space-between;align-items:baseline}
+.hm-top span{font-size:10.5px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--h-dim)}
+.hm-top b{font-family:var(--f-display);font-size:22px;font-weight:500;line-height:1;color:var(--h-fg)}
+.hm-top b em{font-family:var(--f-mono);font-style:normal;font-size:11.5px;font-weight:400;color:var(--h-dim)}
+.hm-top b.good{color:var(--h-good)} .hm-top b.caution{color:var(--h-amber)} .hm-top b.bad{color:var(--h-bad)}
+.hm-track{position:relative;height:6px;background:var(--h-track);margin:6px 0}
+.hm-track i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--h-fg);transition:width .85s var(--ease)}
+.hm-track i.good{background:var(--h-fill-good)} .hm-track i.caution{background:var(--h-fill-amber)}
+.hm-track i.bad{background:var(--h-fill-bad)} .hm-track i.quiet{background:var(--h-dim)}
+.hm-track s{position:absolute;top:-3px;height:12px;border-left:1.5px solid var(--h-fg);text-decoration:none}
+.hm-track s.dash{border-left-style:dashed}
+.hm-words{font-size:11.5px;line-height:1.4;color:var(--h-dim)}
 
-.hero-foot{display:flex;align-items:center;gap:10px;margin-top:14px}
+.hero-foot{display:flex;align-items:center;gap:10px;justify-content:space-between;
+  border-top:1px solid var(--h-line);margin-bottom:-10px}
+.hero-foot .ht-k{font-size:11.5px;line-height:1.3}
 /* 44px touch target, with the ring drawn smaller inside it */
-.hero-why{width:44px;height:44px;margin:-10px -10px -10px 0;display:flex;align-items:center;
-  justify-content:center;background:transparent;border:0;cursor:pointer;color:inherit}
-.hero-why i{width:26px;height:26px;border-radius:999px;border:1px solid var(--h-line);display:flex;
-  align-items:center;justify-content:center;font-family:var(--f-mono);font-size:12px;font-weight:600;
-  font-style:normal;color:var(--h-dim)}
-.hero-why:hover i{color:var(--h-fg);border-color:var(--h-dim)}
-.hero-why:focus-visible i{outline:2px solid var(--h-fg);outline-offset:2px}
+.hero-why{flex:none;width:44px;height:44px;margin-right:-9px;display:grid;place-items:center;
+  background:none;border:0;cursor:pointer;color:var(--h-fg)}
+.hero-why i{width:26px;height:26px;border:1px solid var(--h-fg);border-radius:50%;display:grid;place-items:center;
+  font-family:var(--f-mono);font-size:13px;font-weight:600;font-style:normal;line-height:1}
+.hero-why[aria-expanded="true"] i{background:var(--h-fg);color:var(--h-bg)}
+.hero-why:focus-visible i{outline:2px solid var(--h-fg);outline-offset:3px}
 
 .hero-panel{max-height:0;overflow:hidden;transition:max-height .42s var(--ease)}
-.hp-in{border-top:1px solid var(--h-line);margin-top:6px;padding-top:12px;display:grid;gap:7px}
-.hp-row{display:flex;justify-content:space-between;gap:12px;font-family:var(--f-mono);font-size:12px}
+.hp-in{border-top:1px solid var(--h-line);margin-top:10px;padding-top:16px;display:grid;gap:2px;max-width:460px}
+.hp-row{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:12px}
 .hp-row span{color:var(--h-dim)}
+@media (min-width:900px){
+  .hp-in{display:block;column-count:2;column-gap:48px;max-width:none}
+  .hp-row{break-inside:avoid}
+}
 .hp-row b{color:var(--h-fg);font-weight:500;font-variant-numeric:tabular-nums}
 
 @media (prefers-reduced-motion: reduce){
-  .hero-bar i,.hm-track i,.hero-panel{transition:none}
+  .tank-box i,.hm-track i,.hero-panel{transition:none}
 }
 
+/* ---- the rest of Today, in 1c: no cards, just rules --------------------- */
+#view-today .grid{background:none;border:0;margin-top:0;gap:14px 24px;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+#view-today .cell,#view-today .cell.hl{background:transparent;border-top:1px solid var(--ink);padding:14px 0 8px}
+#view-today .lastday{background:transparent;border:0;border-top:1px solid var(--ink);padding:14px 0 8px}
+#view-today .lastday:hover{background:var(--hover)}
+#view-today .sec{margin-top:0}
+#view-today .sec-head{margin-bottom:8px}
+#view-today .sec-head h2{font-family:var(--f-mono);font-size:10.5px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;line-height:1.2}
+#view-today .stale{border:1px dashed var(--amber);border-left-width:1px;margin:0}
+.today-cols{display:flex;flex-direction:column;gap:22px;margin-top:22px}
+.today-col{display:flex;flex-direction:column;gap:14px;min-width:0}
+@media (min-width:900px){
+  .today-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;align-items:start}
+}
+/* Meals: a name and its calories, then protein, fat and carbs under it */
+.meals-box{border:1px solid var(--rule,var(--line));background:transparent;padding:2px 14px}
+.meal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:12px 0;border-top:1px solid var(--line)}
+.meal:first-child{border-top:0}
+.meal-n{font-family:var(--f-display);font-size:15px;line-height:1.35}
+.meal-n small{display:block;font-family:var(--f-mono);font-size:10.5px;color:var(--ink-45)}
+.meal-k{font-weight:600;font-size:15px;text-align:right}
+.meal-m{display:flex;font-size:11.5px;color:var(--ink-45)}
+.meal-m span{width:58px}.meal-m b{font-weight:600;color:var(--ink)}
+.meal-line{padding:10px 0 12px;font-size:12px;color:var(--ink-70);border-top:1px solid var(--line)}
 
 /* protein and fat at a glance, in plain words: no "floor" or "ceiling" */
 /* the finished day, in one tappable line under the hero */

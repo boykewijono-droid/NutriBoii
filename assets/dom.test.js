@@ -106,7 +106,7 @@ async function boot(tabs, opt = {}) {
     static now() { return now; }
   };
   // reduced motion: bars land at their width and the number does not count up
-  w.matchMedia = query => ({ matches: /reduce/.test(query) || (/dark/.test(query) && !!opt.dark),
+  w.matchMedia = query => ({ matches: /reduce/.test(query) || (/dark/.test(query) && !!opt.dark) || (/min-width:\s*900px/.test(query) && !!opt.wide),
                              addEventListener() {}, removeEventListener() {} });
   w.scrollTo = () => {};
   Object.defineProperty(w.Element.prototype, 'clientWidth', { get() { return 390; } });
@@ -157,20 +157,21 @@ function addsUp(lines) {
 }
 function hero(app) {
   const h = app.d.querySelector('#view-today .hero');
-  const cap = h.querySelector('.hero-cap');
+  const aside = h.querySelector('.hero-aside');
   return {
     num: T(h.querySelector('.hero-num b')),
     tone: h.querySelector('.hero-num').className.replace('hero-num', '').trim(),
-    cap: cap && cap.firstChild ? T({ textContent: cap.firstChild.textContent }) : null,
-    past: T(h.querySelector('.hero-past')),
+    cap: T(h.querySelector('.hero-cap')),
+    past: aside ? T(aside.querySelector('b')).replace(/^\+/, '') + ' ' + T(aside.querySelector('span')) : null,
     note: T(h.querySelector('.hero-foot .ht-k')),
     top: [...h.querySelectorAll('.hero-top .ht-k')].map(T),
-    ticks: [...h.querySelectorAll('.hero-ticks span')].map(s => ({
-      name: T(s.querySelector('i')), text: T(s), at: parseFloat(s.style.left),
-      row: parseFloat(s.style.top), tf: s.style.transform })),
-    marks: h.querySelectorAll('.hero-bar s').length,
-    bar: [...h.querySelectorAll('.hero-bar i')].map(i => i.className + ' ' + i.getAttribute('data-w') + '%'),
+    eaten: T(h.querySelector('.hero-eaten b')),
+    // each tank: its caption and figure, then what it says underneath
+    tanks: [...h.querySelectorAll('.tank')].map(k =>
+      [...k.querySelectorAll('.tank-lab span, .tank-lab b')].map(T).join(' ') + ' | ' + T(k.querySelector('.tank-sub'))),
+    fills: [...h.querySelectorAll('.tank-box i')].map(i => i.getAttribute('data-w') + '%'),
     macros: [...h.querySelectorAll('.hm-top')].map(m => [...m.children].map(T).join(' ')),
+    macroWords: [...h.querySelectorAll('.hm-words')].map(T),
     panel: [...h.querySelectorAll('.hp-row')].map(r => T(r.querySelector('span')) + ' = ' + T(r.querySelector('b'))),
     el: h
   };
@@ -189,11 +190,15 @@ console.log('\n=== Today, under the plan: what is left in it ===');
   eq('captioned, and green', [h.cap, h.tone], ['left in plan', 'good']);
   eq('nothing past the plan to report', h.past, null);
   eq('the clock and the steps sit on top', h.top, ['4,300 steps', '14:00']);
-  eq('marks: EATEN, PLAN, BURN, in order along the bar',
-     h.ticks.map(k => k.text), ['EATEN900', 'PLAN1,709', 'BURN~1,920']);
-  eq('one mark on the bar per label', h.marks, 3);
+  // 1,709 plan, 1,920 burn: the middle tank holds the 211 between them
+  eq('what was eaten, over the tanks', h.eaten, '900');
+  eq('three tanks: the plan, the gap to the burn, anything over',
+     h.tanks, ['Plan 1,709 | 900 of 1,709', 'Burn ~1,920 | 0 of 211', 'Over | 0']);
+  eq('900 / 1,709 = 52.7% of the plan tank, the others empty', h.fills, ['52.7%', '0.0%', '0.0%']);
   eq('the plan is the BMR floor, and the note says so', h.note, 'plan held at your BMR, the floor');
-  eq('protein and fat against their own limits', h.macros, ['PROTEIN 80/150 g', 'FAT 30/70 g']);
+  eq('protein, fat and carbs against their own limits', h.macros, ['Protein 80 / 150 g', 'Fat 30 / 70 g', 'Carbs 90 g']);
+  eq('each with its sentence', h.macroWords, ['70 g to go to the 150 g target. The day is still open.',
+     '40 g left before the limit.', 'No limit \u2014 carbs fill whatever calories protein and fat leave.']);
   eq('the "?" panel: every number the card is made of', h.panel, [
     'forecast burn = ~1,920', '85% of burn = 1,632', 'BMR floor = 1,709', 'plan = 1,709 · floored',
     // 14:00 is 58% of the day: 1,709 x 840/1440 = 997 resting, + 129 = 1,126
@@ -237,7 +242,7 @@ console.log('\n=== Today, under the plan: what is left in it ===');
   click(app, '.hero-why');
   let b = app.d.querySelector('.hero-why');
   eq('open: the panel, the button, its glyph',
-     [app.d.querySelector('#heroWhy').classList.contains('open'), b.getAttribute('aria-expanded'), T(b)], [true, 'true', '×']);
+     [app.d.querySelector('#heroWhy').classList.contains('open'), b.getAttribute('aria-expanded'), T(b)], [true, 'true', '?']);
   await refresh(app);
   b = app.d.querySelector('.hero-why');
   eq('still open after the 10-minute refresh repaints the card',
@@ -255,55 +260,65 @@ console.log('\n=== Today, under the plan: what is left in it ===');
   eq('past the plan: room before even, amber', [x.num, x.cap, x.tone], ['120', 'left before even', 'caution']);
   eq('and how far past the plan', x.past, '91 past plan');
   eq('the panel adds the overshoot', x.panel.includes('past plan = +91'), true);
-  // the bar runs to 1,920 x 1.06 = 2,035.2: food to the plan is 1709/2035.2
-  // = 84.0%, the 91 past it 4.5%, nothing past the burn
-  eq('the bar: plan-coloured, then amber, then no red',
-     x.bar, ['s1 84.0%', 's2 4.5%', 's3 0.0%']);
+  // the plan tank is full, 91 of the 211 between plan and burn is 43.1%, and
+  // nothing is past the burn
+  eq('the tanks: plan full, the gap filling, nothing over',
+     [x.tanks, x.fills], [['Plan 1,709 | full', 'Burn ~1,920 | 91 of 211', 'Over | 0'], ['100.0%', '43.1%', '0.0%']]);
 
   app.tabs.daily = daily(HISTORY.concat([todayRow(2000)]));
   await refresh(app);
   x = hero(app);
   eq('past the burn: 2,000 - 1,920 = 80 over, red', [x.num, x.cap, x.tone], ['80', 'over burn', 'bad']);
   eq('still saying how far past the plan', x.past, '291 past plan');
+  eq('every tank full, and the last one says by how much',
+     [x.tanks, x.fills], [['Plan 1,709 | full', 'Burn ~1,920 | 211 of 211', 'Over | +80'], ['100.0%', '100.0%', '100.0%']]);
   eq('deficit in the panel goes negative', x.panel.includes('deficit · burn less eaten = −80'), true);
 
   app.tabs.daily = daily(HISTORY.concat([todayRow(null)]));
   await refresh(app);
   x = hero(app);
   eq('nothing eaten: the whole plan, uncoloured', [x.num, x.cap, x.tone], ['1,709', 'planned today', '']);
-  eq('no EATEN mark before anything is eaten', x.ticks.map(k => k.name), ['PLAN', 'BURN']);
+  eq('nothing eaten: every tank empty', [x.eaten, x.tanks, x.fills],
+     ['0', ['Plan 1,709 | 0 of 1,709', 'Burn ~1,920 | 0 of 211', 'Over | 0'], ['0.0%', '0.0%', '0.0%']]);
   eq('and the note says why', x.note, 'nothing logged yet today');
 
-  console.log('\n=== the marks never overlap, whatever has been eaten ===');
-  // Sweep the day from 0 to 2,600 kcal. Each label is "NAME" + value in 11px
-  // mono, 6.6px a character, on the narrowest card (322px). Read back from the
-  // page: where it is pinned, which way it hangs, which line it sits on.
-  const W = 322, CH = 6.6;
-  let clashes = [], clipped = [], wrong = [], lines = 0;
+  console.log('\n=== the tanks fill in turn, whatever has been eaten ===');
+  // Sweep the day from 0 to 2,600 kcal. Plan 1,709, burn 1,920: the first
+  // tank fills to the plan, the second only past it, the third only past the
+  // burn, and the headline follows the lines it crosses.
+  let wrong = [];
+  const pc = v => (Math.max(0, Math.min(100, v)).toFixed(1)) + '%';
   for (let cal = 0; cal <= 2600; cal += 25) {
     app.tabs.daily = daily(HISTORY.concat([todayRow(cal)]));
     await refresh(app);
     const k = hero(app);
-    const boxes = k.ticks.map(t => {
-      const w = t.text.length * CH, at = t.at / 100 * W;
-      const l = /\(0\)/.test(t.tf) ? at : /-100%/.test(t.tf) ? at - w : at - w / 2;
-      return { name: t.name, l, r: l + w, row: t.row };
-    });
-    boxes.forEach((a, i) => boxes.slice(i + 1).forEach(b => {
-      if (a.row === b.row && a.l < b.r && b.l < a.r) clashes.push(cal + ': ' + a.name + '/' + b.name);
-    }));
-    boxes.forEach(a => { if (a.l < -0.5 || a.r > W + 0.5) clipped.push(cal + ': ' + a.name); });
-    lines = Math.max(lines, new Set(boxes.map(b => b.row)).size);
-    // and the headline follows the lines it crosses: plan 1,709, burn 1,920
     const want = cal === 0 ? ['1,709', 'planned today'] : cal <= 1709 ? [(1709 - cal).toLocaleString('en-GB'), 'left in plan']
       : cal <= 1920 ? [(1920 - cal).toLocaleString('en-GB'), 'left before even'] : [(cal - 1920).toLocaleString('en-GB'), 'over burn'];
-    if (k.num !== want[0] || k.cap !== want[1] || !k.ticks.some(t => t.text === 'EATEN' + cal.toLocaleString('en-GB'))) wrong.push(cal);
+    const fills = [pc(Math.min(cal, 1709) / 1709 * 100), pc((cal - 1709) / 211 * 100), cal > 1920 ? '100.0%' : '0.0%'];
+    if (k.num !== want[0] || k.cap !== want[1] || k.eaten !== cal.toLocaleString('en-GB') ||
+        JSON.stringify(k.fills) !== JSON.stringify(fills)) wrong.push(cal);
   }
-  eq('105 days of eating: no two labels share a line and overlap', clashes, []);
-  eq('no label hangs off either end of the card', clipped, []);
-  eq('crowded days really did need a second line', lines >= 2, true);
-  eq('the headline and the EATEN mark were right at every step', wrong, []);
+  eq('105 days of eating: headline, eaten and all three tanks right at every step', wrong, []);
   eq('no script errors through the sweep', app.errors, []);
+  app.w.close();
+}
+
+console.log('\n=== Today on a wide screen: the arithmetic is open, and the meals are rows ===');
+{
+  const notes = '- 8:10 AM Oats and whey (400 kcal, P30 F8 C50)\n- 12:30 PM Chicken rice (520 kcal)\nfat over from fried skin';
+  const app = await boot({ daily: daily(HISTORY.concat([todayRow(920, notes)])), base: BASE, body: BODY }, { wide: true });
+  const h = hero(app);
+  eq('open from the start', [h.el.querySelector('#heroWhy').classList.contains('open'),
+     h.el.querySelector('.hero-why').getAttribute('aria-expanded')], [true, 'true']);
+  const meals = [...app.d.querySelectorAll('#view-today .meal')].map(m =>
+    [m.querySelector('.meal-n').firstChild.textContent, T(m.querySelector('.meal-n small')), T(m.querySelector('.meal-k')),
+     [...m.querySelectorAll('.meal-m span')].map(x => T(x).replace(/\s/g, '')).join(' ') || null]);
+  eq('each meal: food and time, calories, then P F C when the bracket has them',
+     meals, [['Oats and whey', '8:10 AM', '400', 'P30 F8 C50'], ['Chicken rice', '12:30 PM', '520', null]]);
+  eq('a line that is not a meal stays a line', T(app.d.querySelector('#view-today .meal-line')), 'fat over from fried skin');
+  eq('three columns below the card: yesterday, activity, meals',
+     [...app.d.querySelectorAll('#view-today .today-col')].length, 3);
+  eq('no script errors', app.errors, []);
   app.w.close();
 }
 
@@ -320,7 +335,8 @@ console.log('\n=== Today with a workout: the plan comes off the floor ===');
     steps: 6000, ex: 510, min: 50, ws: 700, bmr: 1709 }])), base: BASE, body: BODY });
   const h = hero(app);
   eq('1,972 - 1,500 = 472 left in plan', [h.num, h.cap, h.tone], ['472', 'left in plan', 'good']);
-  eq('marks', h.ticks.map(k => k.text), ['EATEN1,500', 'PLAN1,972', 'BURN~2,320']);
+  eq('tanks: plan 1,972, burn 2,320, so 348 between them', h.tanks,
+     ['Plan 1,972 | 1,500 of 1,972', 'Burn ~2,320 | 0 of 348', 'Over | 0']);
   eq('not floored, so the note is the burn so far', h.note, '≈1,607 kcal burned so far');
   // 1,709 x 50/1440 = 59 resting inside the workout; 997 + 451 + 159 = 1,607
   eq('the burn, part by part, adding up to the burn so far', h.panel.filter(r => /^(plan|resting|workouts|steps|burned)/.test(r)),
@@ -635,7 +651,7 @@ console.log('\n=== no forecast yet: claims nothing ===');
   const app = await boot({ daily: daily([{ date: TODAY, cal: 600, bmr: 1709 }]) });
   const h = hero(app);
   eq('the headline is just what was eaten', [h.num, h.cap, h.tone], ['600', 'eaten so far', '']);
-  eq('marks: what was eaten, against the BMR', h.ticks.map(k => k.text), ['EATEN600', 'BMR1,709']);
+  eq('one tank: what was eaten, against the BMR', h.tanks, ['BMR 1,709 | 600 of 1,709']);
   eq('the note', h.note, 'no forecast yet · nothing claimed');
   eq('the panel', h.panel, ['eaten = 600', 'burned so far = 997', 'BMR floor = 1,709',
      'forecast burn = needs 3 days', 'plan = —']);
@@ -670,7 +686,7 @@ console.log('\n=== a scan this morning is today\'s BMR, though the row says othe
   const base = BASE + '\n' + TODAY + ',75.4,19.2,,,1685,from the InBody app';
   const app = await boot({ daily: daily([{ date: TODAY, cal: 600, bmr: 1709 }]), base });
   const h = hero(app);
-  eq('the BMR mark is the new scan\'s', h.ticks.map(k => k.text), ['EATEN600', 'BMR1,685']);
+  eq('the BMR tank is the new scan\'s', h.tanks, ['BMR 1,685 | 600 of 1,685']);
   eq('and so is everything built on it', h.panel, ['eaten = 600', 'burned so far = 983',
      'BMR floor = 1,685', 'forecast burn = needs 3 days', 'plan = —']);
   eq('no script errors', app.errors, []);
