@@ -188,16 +188,15 @@ main{flex:1;min-width:0;padding:0 var(--pad) 96px}
    there is.
    ====================================================================== */
 .hero{
-  --h-bg:#1A1916; --h-fg:#EDE9DF; --h-dim:#A8A59B; --h-line:#3A3830; --h-track:#2B2924;
-  --h-good:#B4D336; --h-amber:#E0B25A; --h-bad:#E8836B;
+  --h-bg:var(--paper); --h-fg:var(--ink); --h-dim:var(--ink-45); --h-line:var(--line); --h-track:#DDD6C6;
+  --h-good:#4F5F18; --h-amber:#7A530C; --h-bad:#A83A23;
   --h-fill-good:#B4D336; --h-fill-amber:#C8962F; --h-fill-bad:#C9573E;
-  background:var(--h-bg);color:var(--h-fg);padding:22px;
+  background:var(--h-bg);color:var(--h-fg);padding:22px;border:1px solid var(--line);
   display:flex;flex-direction:column;gap:14px;font-family:var(--f-mono);line-height:1.3;
 }
 :root[data-theme="dark"] .hero{
-  --h-bg:#F4F1E8; --h-fg:#16150F; --h-dim:#5D594E; --h-line:#CFC8B6; --h-track:#DDD6C6;
-  --h-good:#4F5F18; --h-amber:#7A530C; --h-bad:#A83A23;
-  --h-fill-good:#B4D336; --h-fill-amber:#C8962F; --h-fill-bad:#C9573E;
+  --h-track:#2B2924;
+  --h-good:#B4D336; --h-amber:#E0B25A; --h-bad:#E8836B;
 }
 
 .hero-top{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.08em;
